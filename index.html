@@ -159,18 +159,24 @@ function flash(id, text, ms=1800){ const m = $(id); m.textContent = text; clearT
 
 /* ---------- falling emoji ---------- */
 let rainId = 0;
+const SIZES = [24, 32, 40, 50], spriteCache = {};
+function sprite(ch, s, dpr){            // each emoji is drawn once into a tiny canvas, then just stamped every frame (much faster on phones)
+  const key = ch + s + '@' + dpr; if (spriteCache[key]) return spriteCache[key];
+  const d = Math.ceil(s*1.4*dpr), c = document.createElement('canvas'); c.width = c.height = d; const x = c.getContext('2d');
+  x.font = (s*dpr) + 'px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(ch, d/2, d/2 + s*dpr*.04);
+  return spriteCache[key] = c; }
 function rain(chars, opt){
   opt = opt || {}; const list = Array.isArray(chars) ? chars : [chars];
   const cv = $('#rain'), ctx = cv.getContext('2d'), dpr = window.devicePixelRatio || 1, W = innerWidth, H = innerHeight;
   cv.width = W*dpr; cv.height = H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); cancelAnimationFrame(rainId);
-  const mk = fresh => ({ch:list[Math.random()*list.length|0], x:Math.random()*W, y: fresh ? -30 : -30 - Math.random()*H*.9, s:24 + Math.random()*30, vy:2.2 + Math.random()*3.4, vx:-.6 + Math.random()*1.2, r:Math.random()*6.28, vr:-.04 + Math.random()*.08});
+  const mk = fresh => ({ch:list[Math.random()*list.length|0], x:Math.random()*W, y: fresh ? -30 : -30 - Math.random()*H*.9, s:SIZES[Math.random()*SIZES.length|0], vy:2.2 + Math.random()*3.4, vx:-.6 + Math.random()*1.2, r:Math.random()*6.28, vr:-.04 + Math.random()*.08});
   const P = Array.from({length: opt.count || 48}, () => mk(false));
   rain.stop = () => { cancelAnimationFrame(rainId); ctx.clearRect(0,0,W,H); };
   (function loop(){
     ctx.clearRect(0,0,W,H); let alive = 0;
     P.forEach((p,i) => { p.y += p.vy; p.x += p.vx; p.r += p.vr;
       if (p.y > H + 50){ if (opt.loop) P[i] = mk(true); } else alive++;
-      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.r); ctx.font = p.s + 'px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(p.ch,0,0); ctx.restore(); });
+      const sp = sprite(p.ch, p.s, dpr), d = p.s*1.4; ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.r); ctx.drawImage(sp, -d/2, -d/2, d, d); ctx.restore(); });
     if (alive || opt.loop) rainId = requestAnimationFrame(loop); else ctx.clearRect(0,0,W,H);
   })();
 }
@@ -201,6 +207,333 @@ document.addEventListener('pointerdown', () => { if (music.ready && music.want &
    with haloed stars, a crescent moon, a cypress tree and a village with lit windows on top. */
 let skyRun = 0;
 function startSky(){
+  if (startSky.started) return; startSky.started = true;
+  let ok = false;
+  try { ok = startSkyGL(); } catch (e) { console.warn('starry night: WebGL unavailable, using 2D painter', e); ok = false; }
+  if (!ok){ const old = $('#sky'); if (old.dataset.gl){ const n = old.cloneNode(false); delete n.dataset.gl; old.replaceWith(n); } startSky2D(); }
+}
+
+/* ----- WebGL painter: a fragment shader paints every pixel as layered, impasto brush strokes that ride a
+   swirling flow field (great vortices + spinning star halos), with parallax hills, a lit village and a flame-like cypress. */
+const SKY_HEAD = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform vec2 uR; uniform vec2 uE; uniform float uT; uniform float uF; uniform float uZ;
+uniform vec2 uCam; uniform vec3 uPtr;
+uniform vec4 uV[5]; uniform vec4 uS[11]; uniform vec3 uMoon;
+uniform vec4 uG;  /* horizon y, wave y, cypress x, cypress height */
+uniform vec4 uG2; /* cypress width, church x, -, - */
+const vec2 LGT = vec2(-0.6, 0.8);
+float gCx, gHw;
+
+float h12(vec2 p){ vec3 p3 = fract(vec3(p.xyx)*.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y)*p3.z); }
+vec4 h42(vec2 p){ vec4 p4 = fract(vec4(p.xyxy)*vec4(.1031,.1030,.0973,.1099)); p4 += dot(p4, p4.wzxy + 33.33); return fract((p4.xxyz + p4.yzzw)*p4.zywx); }
+float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3. - 2.*f);
+  return mix(mix(h12(i), h12(i + vec2(1.,0.)), f.x), mix(h12(i + vec2(0.,1.)), h12(i + vec2(1.,1.)), f.x), f.y); }
+
+float hillF(float x){ return uG.x + .03 + .028*sin(x*2.3 + .6) + .013*sin(x*6.1 + 2.) + .07*smoothstep(-.3, 1.2, x/uE.x); }
+float hillN(float x){ return uG.x - .065 + .02*sin(x*3.7 + 2.5) + .008*sin(x*11. + 1.); }
+`;
+/* pass 1 (low resolution): the sky's colour field and its flow direction, rendered to two small textures */
+const SKY_FIELD = `
+vec2 flow(vec2 p){
+  vec2 v = vec2(1., .3*sin(p.x*2.7 + uF*.13) + .22*sin(p.y*4. - p.x*1.3 + uF*.1));
+  for (int i = 0; i < 5; i++){ vec4 o = uV[i]; vec2 d = p - o.xy; float r2 = dot(d,d)/(o.z*o.z);
+    if (r2 < 9.) v += o.w*vec2(-d.y, d.x)/o.z*exp(-r2)*2.; }
+  for (int i = 0; i < 11; i++){ vec4 s = uS[i]; vec2 d = p - s.xy; float rr = s.z*3.2; float r2 = dot(d,d)/(rr*rr);
+    if (r2 < 9.) v += 4.5*vec2(-d.y, d.x)/rr*exp(-r2); }
+  vec2 d = p - uPtr.xy; v += uPtr.z*3.*vec2(-d.y, d.x)/.16*exp(-dot(d,d)/.0256);
+  return normalize(v + 1e-5);
+}
+
+vec3 skyCol(vec2 p){
+  float y01 = clamp((p.y - uG.x)/(uE.y - uG.x), 0., 1.);
+  vec2 w = p + .07*vec2(vn(p*3.5 + uF*.04) - .5, vn(p*3.5 + 9.1 - uF*.04) - .5);
+  vec3 c = mix(vec3(.40,.66,.90), vec3(.14,.33,.72), smoothstep(0., .3, y01));
+  c = mix(c, vec3(.04,.09,.33), smoothstep(.3, 1., y01));
+  float n = vn(w*vec2(2.5, 8.) + vec2(uF*.08, 0.));
+  c *= .78 + .42*n;
+  /* the great rolling wave across the sky */
+  float yb = uG.y + .06*sin(w.x*3. + uF*.22) + .025*sin(w.x*7.3 - uF*.3);
+  float bd = (w.y - yb)/.075; float band = exp(-bd*bd);
+  c = mix(c, mix(vec3(.30,.58,.88), vec3(.86,.95,.98), smoothstep(-.2, .8, sin(bd*4.5 + w.x*3. - uF*.5))), band*.75);
+  /* vortices: spiral arms of cyan / white / ultramarine */
+  for (int i = 0; i < 5; i++){ vec4 o = uV[i]; vec2 d = w - o.xy; float r = length(d)/o.z;
+    if (r < 1.7){ float sg = sign(o.w); float a = atan(d.y, d.x)*sg;
+      float arm = sin(r*8.5 - a - uF*.9*sg + float(i));
+      vec3 sc = mix(vec3(.10,.24,.62), vec3(.40,.72,.94), smoothstep(-.5, .3, arm));
+      sc = mix(sc, vec3(.90,.96,.97), smoothstep(.55, .95, arm));
+      if (i == 0) sc = mix(sc, vec3(.93,.90,.62), smoothstep(.85, 1., arm)*smoothstep(1.2, .4, r)*.8);
+      sc = mix(sc, vec3(.70,.86,.96), smoothstep(.35, 0., r)*.7);
+      c = mix(c, sc, smoothstep(1.7, .55, r)*min(1., abs(o.w)*.32 + .25)); } }
+  /* breathing star halos */
+  for (int i = 0; i < 11; i++){ vec4 s = uS[i]; vec2 d = w - s.xy; float r = length(d)/s.z;
+    if (r < 4.2){ float fi = float(i); r /= 1. + .1*sin(uT*1.25 + fi*1.7);
+      float ring = .5 + .5*cos(r*3.2 - uT*1.1 - fi);
+      vec3 inner = mix(vec3(1.,.97,.80), vec3(1.,.84,.32), smoothstep(.4, 1.2, r));
+      vec3 outer = mix(vec3(.90,.88,.50), vec3(.55,.80,.93), smoothstep(1.5, 3.2, r));
+      if (s.w > .5){ inner = mix(inner, vec3(1.,.72,.25), .35); outer = mix(outer, vec3(.95,.80,.40), .35); }
+      vec3 hc = mix(inner, outer, smoothstep(1., 1.8, r))*(.74 + .42*ring);
+      c = mix(c, hc, (1. - smoothstep(2.1, 4.2, r))*.92); } }
+  /* moon halo */
+  { vec2 d = w - uMoon.xy; float r = length(d)/uMoon.z;
+    if (r < 3.){ float ring = .5 + .5*cos(r*4.2 - uT*.8);
+      vec3 hc = mix(vec3(.90,.48,.12), vec3(.98,.74,.30), smoothstep(1., 2.2, r))*(.72 + .36*ring);
+      c = mix(c, hc, (1. - smoothstep(1.7, 3., r))*.92); } }
+  return c;
+}
+void main(){
+  vec2 p = (gl_FragCoord.xy - .5*uR)/min(uR.x, uR.y)*uZ + uCam*.3;
+#ifdef DIR
+  gl_FragColor = vec4(flow(p)*.5 + .5, 0., 1.);
+#else
+  gl_FragColor = vec4(skyCol(p), 1.);
+#endif
+}`;
+/* pass 2 (full resolution): brush strokes, foreground, stars and moon */
+const SKY_MAIN = `
+uniform sampler2D uCol, uDir;
+vec2 skyUV(vec2 ps){ return ((ps - uCam*.3)/uZ*min(uR.x, uR.y) + .5*uR)/uR; }
+vec3 skyCol(vec2 ps){ return texture2D(uCol, skyUV(ps)).rgb; }
+vec2 flow(vec2 ps){ return normalize(texture2D(uDir, skyUV(ps)).xy*2. - 1. + 1e-4); }
+
+vec3 tint(vec3 c, float j){ return c*(.84 + .32*j) + (j - .5)*vec3(-.05, .02, .07); }
+
+/* one layer of brush strokes: picks the top-most stroke covering p among the 3x3 neighbouring cells */
+float strokes(vec2 p, vec2 dir, float cs, float seed, float spd, out vec2 cen, out float shade, out float jit){
+  vec2 perp = vec2(-dir.y, dir.x); vec2 id = floor(p/cs);
+  float best = -1., cov = 0.; shade = 1.; jit = .5; cen = p;
+  float lp = dot(perp, LGT);
+  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++){
+    vec2 cid = id + vec2(float(i), float(j));
+    vec4 h = h42(cid + seed);
+    float ph = fract(uF*spd*(.6 + .8*h.z) + h.w);
+    float life = spd > 0. ? .5 + .5*sin(3.14159*ph) : 1.;
+    vec2 c = (cid + .5 + (h.xy - .5)*.9)*cs + (spd > 0. ? dir*(ph - .5)*cs*1.3 : vec2(0.));
+    vec2 d = p - c;
+    float L = cs*(.8 + .65*h.z)*life, Wd = cs*(.24 + .17*h.x);
+    float u = dot(d, dir)/L, v = dot(d, perp)/Wd;
+    v += (h.y - .5)*.9*u*u;
+    float wp = .5 + .5*sqrt(max(0., 1. - u*u));
+    float s = (1. - smoothstep(.8, 1., abs(u)))*(1. - smoothstep(.78, 1., abs(v)/wp));
+    if (s > .002){ float pr = fract(h.w*7.31 + h.z*.37);
+      if (pr > best){ best = pr; cov = s; cen = c; jit = h.y;
+        float br = sin(v*16. + h.x*40. + u*2.5);
+        float tail = smoothstep(.35, 1., u);
+        cov *= 1. - tail*(.55 + .45*br)*.7;  /* dry-brush tail */
+        shade = 1. + .30*v*lp - .14*v*v + .07*br + .10*pow(max(br, 0.), 6.)*(.4 + .6*max(v*lp, 0.)); } }
+  }
+  return cov;
+}
+
+vec3 paintSky(vec2 p){
+  vec2 dir = flow(p), cen; float sh, j, cov;
+  vec3 col = skyCol(p)*.8;
+  cov = strokes(p, dir, .064, 1.7, .10, cen, sh, j); if (cov > 0.) col = mix(col, tint(skyCol(mix(p, cen, .85)), j)*sh, cov);
+  cov = strokes(p, dir, .042, 7.3, .16, cen, sh, j); if (cov > 0.) col = mix(col, tint(skyCol(mix(p, cen, .85)), j)*sh, cov);
+  cov = strokes(p, dir, .027, 13.1, .24, cen, sh, j); if (cov > 0.) col = mix(col, tint(skyCol(mix(p, cen, .85)), j)*sh, cov);
+  /* glowing star cores */
+  for (int i = 0; i < 11; i++){ vec4 s = uS[i]; vec2 d = p - s.xy; float r = length(d)/s.z;
+    if (r < 7.){ float br = 1. + .14*sin(uT*1.25 + float(i)*1.7);
+      vec3 sc = s.w > .5 ? vec3(1.,.86,.45) : vec3(1.,.96,.78);
+      col += sc*(.22*exp(-r*.75)*br + 1.1*exp(-r*r*3.));
+      col = mix(col, vec3(1.,.99,.92), smoothstep(.55, .38, r)); } }
+  /* crescent moon */
+  { vec2 d = p - uMoon.xy; float r = length(d)/uMoon.z;
+    float br = 1. + .08*sin(uT*.9);
+    col += vec3(1.,.62,.22)*(.14*exp(-r*.9)*br);
+    float disc = smoothstep(1., .93, r), cut = smoothstep(.97, 1.05, length(d - vec2(.48, .2)*uMoon.z)/(uMoon.z*.86));
+    float m = disc*cut;
+    if (m > 0.){ float n = vn(d/uMoon.z*vec2(9., 3.) + 4.);
+      col = mix(col, mix(vec3(1.,.90,.45), vec3(1.,.98,.80), n)*(1. + .08*sin(atan(d.y, d.x)*12.)), m); } }
+  /* light surges where she touches */
+  vec2 dq = p - uPtr.xy; col += vec3(1.,.86,.48)*uPtr.z*.28*exp(-dot(dq,dq)/.012);
+  return col;
+}
+
+vec3 fgCol(int reg, vec2 q){
+  if (reg == 1){ float d = hillF(q.x) - q.y; float n = vn(q*vec2(6., 14.));
+    vec3 c = mix(vec3(.30,.45,.78), vec3(.13,.23,.52), smoothstep(0., .05, d));
+    c = mix(c, vec3(.12,.30,.42), smoothstep(.55, .85, n)*.6);
+    return mix(c, vec3(.06,.12,.32), smoothstep(.08, .25, d)); }
+  if (reg == 2){ float d = hillN(q.x) - q.y; float n = vn(q*vec2(7., 12.) + 3.);
+    vec3 c = mix(vec3(.13,.27,.44), vec3(.06,.15,.26), smoothstep(0., .1, d));
+    c = mix(c, vec3(.10,.25,.18), smoothstep(.45, .8, n)*.7);
+    c = mix(c, vec3(.30,.44,.66), smoothstep(.72, .95, vn(q*vec2(11., 20.) + 9.))*.6);
+    return c*mix(1., .5, smoothstep(.1, .5, d)); }
+  float n = vn(q*vec2(14., 5.) + vec2(0., uT*.05));
+  vec3 c = mix(vec3(.02,.05,.04), vec3(.10,.20,.11), n);
+  c = mix(c, vec3(.22,.32,.13), smoothstep(.68, .95, vn(q*vec2(22., 7.) + 5.))*.85);
+  float sx = (q.x - gCx)/max(gHw, 1e-3);
+  c = mix(c, vec3(.16,.26,.42), smoothstep(.35, 1., sx)*.55);
+  return mix(c, vec3(0.,.015,.02), smoothstep(.3, 1., -sx)*.5);
+}
+
+vec3 paintFG(vec2 q, int reg){
+  vec2 dir; float c1 = .044, c2 = .027, sp = 0.;
+  if (reg == 1){ float s = (hillF(q.x + .01) - hillF(q.x - .01))/.02; dir = normalize(vec2(1., s + .55*sin(q.x*14. + q.y*25.))); }
+  else if (reg == 2) dir = normalize(vec2(1., .5*sin(q.x*9. + q.y*16.) + .15));
+  else { dir = normalize(vec2(.42*sin(q.y*15. + q.x*30. + uT*.35), 1.)); c1 = .05; c2 = .03; sp = .03; }
+  vec2 cen; float sh, j, cov;
+  vec3 col = fgCol(reg, q)*.72;
+  cov = strokes(q, dir, c1, 21.7 + float(reg), sp, cen, sh, j); if (cov > 0.) col = mix(col, tint(fgCol(reg, mix(q, cen, .85)), j)*sh, cov);
+  cov = strokes(q, dir, c2, 31.3 + float(reg), sp, cen, sh, j); if (cov > 0.) col = mix(col, tint(fgCol(reg, mix(q, cen, .85)), j)*sh, cov);
+  return col;
+}
+
+/* one village house (row 0 back, row 1 front); returns 1 when q hits it */
+float house(vec2 q, float row, out vec3 c){
+  float cw = .07 - row*.008;
+  float k = floor(q.x/cw + row*.5);
+  vec4 h = h42(vec2(k, row*13. + 3.));
+  if (h.w*h.x > .45 || (abs(q.x - uG2.y) < .085 && row < .5)) return 0.;
+  float x0 = (k - row*.5)*cw + cw*(.04 + h.x*.12), w = cw*(.6 + .3*h.y);
+  float base = hillN(x0 + w*.5) - .012 - row*.04 - h.z*.018, hh = .014 + .016*h.w, rh = .011 + .01*h.x;
+  float lx = q.x - x0, ly = q.y - base;
+  float roof = hh + rh*(1. - abs(lx/w*2. - 1.));
+  if (lx < -.004 || lx > w + .004 || ly > roof || ly < -.006) return 0.;
+  if (ly <= hh && (lx < 0. || lx > w)) return 0.;
+  float g = vn(q*vec2(90., 380.))*.22 + vn(q*500.)*.08;
+  if (ly > hh){ c = mix(vec3(.07,.11,.28), vec3(.34,.26,.24), step(.72, h.z))*(.85 + g); if (roof - ly < .0025) c *= .4; return 1.; }
+  c = mix(mix(vec3(.17,.25,.45), vec3(.30,.36,.50), h.y), vec3(.36,.38,.36), step(.8, h.x))*(.8 + g)*(row > .5 ? .85 : 1.);
+  if (lx < .002 || w - lx < .002 || ly < .002) c *= .4;
+  float ww = w*.16, wh = hh*.3;
+  for (int k2 = 0; k2 < 2; k2++){ float wx = w*(k2 == 0 ? .2 : .62), wy = hh*.3;
+    if (lx > wx && lx < wx + ww && ly > wy && ly < wy + wh && h42(vec2(k + float(k2)*.5, row)).x > .3)
+      c = vec3(1.,.80,.34)*(.92 + .12*sin(uT*1.3 + k*2.1 + float(k2)));
+    else c += vec3(.35,.22,.05)*exp(-length(vec2(lx - wx - ww*.5, ly - wy - wh*.5))/ww*1.4)*.5; }
+  return 1.;
+}
+float church(vec2 q, out vec3 c){
+  float x = q.x - uG2.y, base = hillN(uG2.y) - .03;
+  float ly = q.y - base;
+  float nave = step(abs(x + .02), .036)*step(ly, .03 + .014*(1. - abs(x + .02)/.036))*step(-.006, ly);
+  float tower = step(abs(x - .022), .008)*step(ly, .062)*step(-.006, ly);
+  float spire = step(abs(x - .022), .008*max(0., 1. - (ly - .062)/.085))*step(.062, ly);
+  if (nave + tower + spire < .5){ return 0.; }
+  float g = vn(q*vec2(90., 380.))*.2;
+  c = (spire + tower > .5 ? vec3(.08,.12,.28) : vec3(.20,.26,.44))*(.85 + g);
+  if (nave > .5 && tower + spire < .5 && abs(x + .02) < .005 && ly > .008 && ly < .022) c = vec3(1.,.78,.32);
+  return 1.;
+}
+
+void main(){
+  vec2 p = (gl_FragCoord.xy - .5*uR)/min(uR.x, uR.y)*uZ;
+  vec2 ps = p + uCam*.3, pf = p + uCam*.55, pn = p + uCam*.8, pc = p + uCam*1.2;
+  float cu = clamp((pc.y + uE.y + .04)/uG.w, 1e-4, 1.2);
+  gCx = uG.z + sin(cu*7. + 1.)*uG2.x*.18*cu + sin(uT*.45)*.014*cu*cu;
+  gHw = uG2.x*(.5*sin(3.14159*pow(min(cu, 1.), .62)) + .05);
+  gHw *= 1. + .16*sin(cu*30. + sign(pc.x - gCx)*1.7 + uT*.5);
+  gHw += (vn(pc*55.) - .5)*.012;
+  int reg = 0; vec3 hc = vec3(0.);
+  if (cu < 1. && abs(pc.x - gCx) < gHw) reg = 4;
+  else if (church(pn, hc) > .5 || house(pn, 1., hc) > .5 || house(pn, 0., hc) > .5) reg = 3;
+  else if (pn.y < hillN(pn.x) + (vn(pn*40.) - .5)*.006) reg = 2;
+  else if (pf.y < hillF(pf.x) + (vn(pf*40.) - .5)*.006) reg = 1;
+  vec3 col;
+  if (reg == 0) col = paintSky(ps);
+  else if (reg == 1) col = paintFG(pf, 1);
+  else if (reg == 2) col = paintFG(pn, 2);
+  else if (reg == 4) col = paintFG(pc, 4);
+  else col = hc;
+  vec2 e = p/uE; col *= 1. - .28*smoothstep(.55, 1.5, length(e));
+  col *= .95 + .1*vn(gl_FragCoord.xy*.7);
+  gl_FragColor = vec4(col, 1.);
+}`;
+
+function startSkyGL(){
+  if (/[?&]sky=2d\b/.test(location.search)) return false;
+  const cv = $('#sky'), opts = {alpha:false, antialias:false, depth:false, stencil:false, premultipliedAlpha:false, preserveDrawingBuffer:false, powerPreference:'high-performance', failIfMajorPerformanceCaveat:true};
+  const gl = cv.getContext('webgl', opts) || cv.getContext('experimental-webgl', opts);
+  if (!gl) return false;
+  cv.dataset.gl = '1';
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches, coarse = matchMedia('(pointer: coarse)').matches;
+  let progs, fbo, U, W, H, fw, fh, q = 1, lost = false;
+  const names = ['uR','uE','uT','uF','uZ','uCam','uPtr','uV','uS','uMoon','uG','uG2','uCol','uDir'];
+  const Vb = new Float32Array(20), Sb = new Float32Array(44);
+  function init(){
+    const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) || 'shader compile failed'); return s; };
+    const vs = sh(gl.VERTEX_SHADER, 'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}');
+    const mk = src => { const p = gl.createProgram(); gl.attachShader(p, vs); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, src));
+      gl.bindAttribLocation(p, 0, 'a'); gl.linkProgram(p);
+      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p) || 'link failed');
+      const loc = {}; names.forEach(n => loc[n] = gl.getUniformLocation(p, n)); return {p, loc}; };
+    progs = [mk(SKY_HEAD + SKY_FIELD), mk('#define DIR\n' + SKY_HEAD + SKY_FIELD), mk(SKY_HEAD + SKY_MAIN)];
+    fbo = [0, 1].map(() => { const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      return {tex, fb: gl.createFramebuffer()}; });
+    const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  }
+  const each = f => progs.forEach(pr => { gl.useProgram(pr.p); f(pr.loc); });
+  function layout(){
+    W = innerWidth; H = innerHeight; U = Math.min(W, H);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2), budget = coarse ? 6e5 : 8e5;
+    const s = Math.max(.3, Math.min(dpr, Math.sqrt(budget/(W*H)))*q);
+    cv.width = Math.max(1, Math.round(W*s)); cv.height = Math.max(1, Math.round(H*s));
+    fw = Math.max(1, Math.ceil(cv.width/3)); fh = Math.max(1, Math.ceil(cv.height/3));
+    fbo.forEach(f => { gl.bindTexture(gl.TEXTURE_2D, f.tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, fw, fh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, f.fb); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, f.tex, 0);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE && !gl.isContextLost()) throw new Error('sky framebuffer incomplete'); });
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const port = H > W*1.15, P = (fx, fy) => [(fx - .5)*W/U, (.5 - fy)*H/U];
+    const vs = port ? [[.55,.27,.24,3.2],[.22,.2,.13,-2.6],[.8,.4,.11,2.2],[.18,.48,.09,-1.8],[.7,.55,.09,-1.6]]
+                    : [[.53,.33,.22,3.2],[.27,.24,.13,-2.6],[.84,.48,.11,2.2],[.14,.5,.09,-1.8],[.68,.55,.09,-1.6]];
+    vs.forEach((v, i) => { const [x, y] = P(v[0], v[1]); Vb.set([x, y, v[2], v[3]], i*4); });
+    const ss = [[.12,.12,.026,0],[.31,.08,.02,1],[.45,.18,.024,0],[.66,.09,.022,0],[.93,.3,.025,1],[.37,.4,.018,0],[.06,.38,.02,0],[.75,.32,.02,1],[.58,.05,.017,0],[.2,.29,.018,0],[.7,.2,.019,0]];
+    ss.forEach((v, i) => { const [x, y] = P(v[0], port ? v[1]*.85 : v[1]); Sb.set([x, y, v[2]*(port ? 1.15 : 1), v[3]], i*4); });
+    const mo = P(port ? .8 : .86, port ? .1 : .14), hz = P(0, port ? .79 : .74)[1], wave = P(0, port ? .4 : .45)[1];
+    progs.forEach((pr, i) => { gl.useProgram(pr.p); const l = pr.loc;
+      gl.uniform2f(l.uR, i < 2 ? fw : cv.width, i < 2 ? fh : cv.height); gl.uniform2f(l.uE, W/U/2, H/U/2);
+      gl.uniform4fv(l.uV, Vb); gl.uniform4fv(l.uS, Sb); gl.uniform3f(l.uMoon, mo[0], mo[1], .062);
+      gl.uniform4f(l.uG, hz, wave, P(port ? .1 : .15, 0)[0], (port ? .56 : .66)*H/U);
+      gl.uniform4f(l.uG2, Math.max(.1, 56/U), P(port ? .7 : .64, 0)[0], 0, 0);
+      if (i === 2){ gl.uniform1i(l.uCol, 0); gl.uniform1i(l.uDir, 1); } });
+  }
+  init(); layout();
+
+  let t = 0, F = 0, last = 0, lastDraw = 0, acc = 0, nf = 0, t0 = performance.now();
+  const ptr = {x:0, y:0, tx:0, ty:0, s:0};
+  function draw(){
+    const g = Math.max(0, Math.sin(t*.21)*Math.sin(t*.13 + 1)), gust = g*g;
+    const z = 1 - .015*Math.sin(t*.05), cx = Math.sin(t*.09)*.022 + ptr.x*.012, cy = Math.sin(t*.067 + 1.3)*.013 + ptr.y*.008;
+    each(l => { gl.uniform1f(l.uT, t); gl.uniform1f(l.uF, F); gl.uniform1f(l.uZ, z); gl.uniform2f(l.uCam, cx, cy); gl.uniform3f(l.uPtr, ptr.x, ptr.y, ptr.s); });
+    gl.viewport(0, 0, fw, fh);
+    for (let i = 0; i < 2; i++){ gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[i].fb); gl.useProgram(progs[i].p); gl.drawArrays(gl.TRIANGLES, 0, 3); }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, cv.width, cv.height); gl.useProgram(progs[2].p);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, fbo[0].tex); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, fbo[1].tex);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    return gust;
+  }
+  function frame(now){
+    if (lost) return;
+    requestAnimationFrame(frame);
+    if (now - lastDraw < 15) return;                    // cap at ~60fps on 120Hz screens
+    const raw = last ? now - last : 16.7, dt = Math.min(.1, raw/1000); last = lastDraw = now; t += dt;
+    if (now - t0 > 2500 && raw < 120){ acc += raw; if (++nf === 40){ if (acc/nf > 24 && q > .62){ q *= .85; layout(); } acc = nf = 0; } }
+    ptr.s *= Math.exp(-dt*1.3); const k = Math.min(1, dt*5); ptr.x += (ptr.tx - ptr.x)*k; ptr.y += (ptr.ty - ptr.y)*k;
+    const gust = draw(); F += dt*(.6 + .9*gust + ptr.s*1.2);
+  }
+  if (still){ t = 14; F = 9; draw(); }
+  else {
+    requestAnimationFrame(frame);
+    const mv = (e, s) => { ptr.tx = (e.clientX - W/2)/U; ptr.ty = (H/2 - e.clientY)/U; ptr.s = Math.max(ptr.s, s); };
+    window.addEventListener('pointermove', e => mv(e, .55), {passive:true});
+    window.addEventListener('pointerdown', e => { mv(e, 1); ptr.x = ptr.tx; ptr.y = ptr.ty; }, {passive:true});
+  }
+  let rs; const onResize = () => { clearTimeout(rs); rs = setTimeout(() => { if (!lost){ layout(); if (still) draw(); } }, 200); };
+  window.addEventListener('resize', onResize); window.addEventListener('orientationchange', onResize);
+  cv.addEventListener('webglcontextlost', e => { e.preventDefault(); lost = true; });
+  cv.addEventListener('webglcontextrestored', () => { try { init(); lost = false; layout(); last = 0; if (still) draw(); else requestAnimationFrame(frame); } catch (err) { console.warn(err); } });
+  return true;
+}
+
+function startSky2D(){
   const run = ++skyRun, paint = $('#sky'), fgc = $('#skyfg'), pc = paint.getContext('2d'), fc = fgc.getContext('2d');
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches, rnd = (a,b) => a + Math.random()*(b-a);
   let W, H, m, hz, t = 0, last = 0, parts, vort, fgImg, wins, bigStars, smallStars, baseGrad, fdpr;
@@ -367,10 +700,10 @@ const INIT = {
       [...line.toUpperCase()].forEach(ch => { const tile = el('div', ch === ' ' ? 'tile gap' : 'tile'); tr.append(tile);
         if (ch !== ' '){ setTimeout(() => { tile.classList.add('flip'); setTimeout(() => { tile.textContent = ch; tile.classList.add('correct'); }, 250); }, t); t += 200; } });
       board.append(tr); t += 200; });
-    setTimeout(() => rain(F.hearts, {loop:true, count:34}), 1500);
+    setTimeout(() => rain(F.hearts, {loop:true, count:28}), 1500);
     setTimeout(() => { $('#yesrow').style.display = 'flex'; }, t + 600);
     $('#yesrow').querySelectorAll('button').forEach(b => b.onclick = () => {
-      $('#yesrow').style.display = 'none'; const m = $('#yesmsg'); m.textContent = F.yesText; m.style.display = 'block'; rain(F.hearts, {loop:true, count:110}); });
+      $('#yesrow').style.display = 'none'; const m = $('#yesmsg'); m.textContent = F.yesText; m.style.display = 'block'; rain(F.hearts, {loop:true, count:80}); });
   }
 };
 
