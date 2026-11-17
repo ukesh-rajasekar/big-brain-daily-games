@@ -2,128 +2,64 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Today's Puzzles</title>
-<script src="puzzle-libs.js"></script>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Today's Puzzle</title>
 <script>
 /* ============================================================
    EDIT THIS PART — everything personal lives here
    ============================================================ */
 const CONFIG = {
-  dev: true,                         // true = shows a bar to jump between games. SET TO false BEFORE SENDING IT TO HER
-  rainEmoji: "🫦",                   // falls like confetti after every round
-  herName: "",                      // e.g. "Priya" (leave "" to skip the name)
+  herName: "Rithu",
+  rainEmoji: "🫦",                   // falls like confetti when she solves the word
 
   wordle: {
-    answer: "HEART",                 // any 4–7 letter word (a pet name, an inside joke…)
+    answer: "HEART",                 // any 4–7 letter word
     hint: "Hint: it's what you stole from me.",   // shown if she uses all 6 tries
-    winText: "Got it. One down, two to go."
-  },
-
-  crossword: {
-    // Your answers and clues. The page arranges them into a grid by itself (spaces in answers are fine).
-    // Tip: answers that share letters (A, E, T, R...) cross more easily.
-    words: [
-      { answer: "BANGALORE",     clue: "The place you're keen to take me to and show me around" },
-      { answer: "KPATTI",        clue: "My town" },
-      { answer: "TEACHER",       clue: "What my mum and Roma have in common" },
-      { answer: "VADA CHENNAI",  clue: "My favourite movie" },
-      { answer: "BLACK PANTHER", clue: "Our first movie together" },
-      { answer: "JUST VOTE",     clue: "My favourite thing to say lately (picked up from Roma)" }
-    ],
-    winText: "Flawless. Next up…"
-  },
-
-  globle: {
-    enabled: false,                  // the country-guessing globe. Set true to bring it back as an extra round
-    answer: "France",                // change to where you met / first trip / dream honeymoon
-    winText: "You found it."
-  },
-
-  nsw: {
-    answer: "Parramatta",             // any NSW suburb. If a name exists more than once, add the label shown in the dropdown, e.g. "Richmond (110 km NW of Sydney)"
-    winText: "Right on the spot."
-  },
-
-  quiz: {
-    // Three questions, one answer each.
-    // accept = list of acceptable answers. Each one is a list of keywords that must ALL appear in what she types
-    //   (spelling mistakes of 1 letter are forgiven for longer keywords). display = the answer shown to her.
-    questions: [
-      { q: "Which Event Cinemas do we like the most?",
-        accept: [["parramatta"], ["ed", "square"], ["edmondson"]],
-        display: "Event Cinemas Parramatta (or Ed Square)",
-        hint: "Hint: it's in the west, and it's NOT the one we hate most.",
-        // special reactions to specific wrong answers: [keywords, message]
-        reactions: [ [["liverpool"], "Ha! That's the one we hate most 😂 Try again!"] ],
-        win: "Our movie-night home. 🍿" },
-      { q: "Which is our favourite snack place to go to?",
-        accept: [["gj06"], ["gjo6"], ["gj", "parramatta"]],
-        display: "GJ06 Parramatta",
-        hint: "Hint: it's in Parramatta and has a code for a name.",
-        win: "Every. Single. Time. 😋" },
-      { q: "What's our favourite morning breakfast takeaway?",
-        accept: [["gyg"], ["guzman"], ["burrito"]],
-        display: "Liverpool GYG breakfast burrito",
-        hint: "Hint: it's a burrito, and it's from a Mexican chain.",
-        win: "Breakfast of champions. 🌯" }
-    ],
-    winText: "Three for three. You know us too well."
+    winText: "Got it. One last thing…"
   },
 
   finale: {
-    video: "proposal.mp4",           // put your video next to this file with this name
-    lead: "You solved them all. There's one last thing I need to ask you.",
-    question: "WILL YOU MARRY ME?",
+    lead: "I have one more question for you…",
+    lines: ["RITHU", "NARENDRA", "WILL YOU", "MARRY", "ME?"],   // shown as tiles, one row per line
+    hearts: ["❤️", "💖", "💗", "💕", "💘"],
     yesText: "She said YES! 💍"
-  }
+  },
+
+  music: { youtubeId: "Bcp0Jp_MUYU" }   // plays in the background once she taps Play
 };
 </script>
 <style>
-  :root{--green:#4f9d69;--yellow:#e0b44c;--grey:#74777a;--line:#d6d8dc;--ink:#18181a;--blue:#bfe3f5;--gold:#f7d154;--hdr:56px;--dev:0px;--pad:16px}
+  :root{--green:#4f9d69;--yellow:#e0b44c;--grey:#74777a;--line:#d6d8dc;--ink:#18181a;--hdr:56px;--pad:16px}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html{height:100%;-webkit-text-size-adjust:100%}
-  body{margin:0;min-height:100vh;min-height:100dvh;font-family:"Helvetica Neue",Arial,sans-serif;color:var(--ink);background:#fff;display:flex;flex-direction:column;padding-bottom:var(--dev)}
-  body.dev{--dev:44px}
+  body{margin:0;min-height:100vh;min-height:100dvh;font-family:"Helvetica Neue",Arial,sans-serif;color:var(--ink);background:#fff;display:flex;flex-direction:column;transition:background .8s,color .8s}
   @media (max-width:360px){:root{--pad:12px}}
 
   /* ---------- shell ---------- */
-  header{position:sticky;top:0;z-index:20;height:var(--hdr);background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 var(--pad);flex:none}
-  header h1{font:700 clamp(18px,5vw,24px) Georgia,"Times New Roman",serif;margin:0;letter-spacing:.3px}
-  .pips{display:flex;gap:6px}
-  .pip{width:28px;height:28px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;font-size:12px;font-weight:700;color:var(--grey)}
-  .pip.now{border-color:var(--ink);color:var(--ink)}
-  .pip.done{background:var(--green);border-color:var(--green);color:#fff}
-  main{width:100%;max-width:1000px;margin:0 auto;flex:1;padding:var(--pad);padding-bottom:max(var(--pad),env(safe-area-inset-bottom));display:flex;flex-direction:column}
-  .screen{display:none;width:100%;flex:1;flex-direction:column;align-items:center;gap:12px}
+  header{position:sticky;top:0;z-index:20;height:var(--hdr);background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 var(--pad);flex:none;transition:background .8s,border-color .8s}
+  header h1{font:700 clamp(18px,5vw,24px) Georgia,"Times New Roman",serif;margin:0;letter-spacing:.3px;transition:opacity 1s}
+  main{position:relative;z-index:2;width:100%;max-width:1000px;margin:0 auto;flex:1;padding:var(--pad);padding-bottom:max(var(--pad),env(safe-area-inset-bottom));display:flex;flex-direction:column}
+  .screen{display:none;width:100%;flex:1;flex-direction:column;align-items:center;gap:14px}
   .screen.on{display:flex}
   .screen.mid{justify-content:center}
   h2{font:700 clamp(22px,5vw,28px) Georgia,serif;margin:4px 0 0;text-align:center}
-  p.sub{margin:0;color:#555;text-align:center;line-height:1.45;font-size:clamp(14px,3.8vw,16px);max-width:560px}
-  .btn{background:var(--ink);color:#fff;border:0;border-radius:999px;padding:13px 28px;min-height:46px;font-size:16px;font-weight:700;cursor:pointer}
-  .btn:disabled{opacity:.5}
+  p.sub{margin:0;color:#555;text-align:center;line-height:1.45;font-size:clamp(14px,3.8vw,16px);max-width:520px}
+  .btn{background:var(--ink);color:#fff;border:0;border-radius:999px;padding:13px 32px;min-height:48px;font-size:17px;font-weight:700;cursor:pointer}
   .btn.green{background:var(--green)}
-  .chip{background:#fff;color:var(--ink);border:1px solid var(--ink);border-radius:999px;padding:7px 16px;min-height:36px;font-size:14px;font-weight:700;cursor:pointer}
+  .chip{background:transparent;color:inherit;border:1px solid currentColor;border-radius:999px;padding:6px 14px;min-height:34px;font-size:14px;font-weight:700;cursor:pointer}
   .msg{min-height:22px;font-weight:700;font-size:14px;text-align:center}
   .msg:not(:empty){background:var(--ink);color:#fff;padding:9px 14px;border-radius:6px}
   .win{display:none}
-  .win.on{display:flex;position:fixed;inset:0;z-index:40;background:rgba(255,255,255,.97);flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;animation:fade .4s}
+  .win.on{display:flex;position:fixed;inset:0;z-index:40;background:rgba(255,255,255,.96);flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;animation:fade .4s}
   .win b{font:700 clamp(22px,6vw,30px)/1.25 Georgia,serif;text-align:center;max-width:460px}
   @keyframes fade{from{opacity:0}}
 
-  /* ---------- intro ---------- */
-  .cards{display:grid;grid-template-columns:1fr;gap:10px;width:100%;max-width:600px;margin:6px 0}
-  .card{display:flex;align-items:center;gap:14px;border:1px solid var(--line);border-radius:12px;padding:14px}
-  .card .ic{width:52px;height:52px;border-radius:10px;display:grid;place-items:center;font:700 26px Georgia,serif;color:#fff;flex:none}
-  .card b{display:block;font:700 18px Georgia,serif}
-  .card span{color:#666;font-size:14px}
-  @media (min-width:640px){.cards{grid-template-columns:1fr 1fr}}
-
-  /* ---------- tiles (wordle + finale) ---------- */
+  /* ---------- tiles ---------- */
   .board{--rows:6;--chrome:340px;display:grid;gap:5px}
-  #qBoard{--rows:4;--chrome:240px}
+  #qBoard{--chrome:300px}
   .trow{display:flex;gap:5px;justify-content:center}
-  .tile{--s:max(34px,min(64px,calc((100vw - 2*var(--pad) - 24px)/var(--n,5)),calc((100dvh - var(--hdr) - var(--dev) - var(--chrome))/var(--rows))));width:var(--s);height:var(--s);border:2px solid var(--line);display:grid;place-items:center;font-size:calc(var(--s)*.52);font-weight:700;text-transform:uppercase;user-select:none}
+  .tile{--s:max(34px,min(64px,calc((100vw - 2*var(--pad) - 24px)/var(--n,5)),calc((100dvh - var(--hdr) - var(--chrome))/var(--rows))));width:var(--s);height:var(--s);border:2px solid var(--line);display:grid;place-items:center;font-size:calc(var(--s)*.52);font-weight:700;text-transform:uppercase;user-select:none}
+  .tile.gap{border-color:transparent;width:calc(var(--s)*.45)}
   .tile.filled{border-color:#878a8c}
   .tile.pop{animation:pop .1s}
   .tile.flip{animation:flip .5s ease forwards}
@@ -143,179 +79,47 @@ const CONFIG = {
   .key:active{filter:brightness(.92)}
   .key.correct{background:var(--green);color:#fff}.key.present{background:var(--yellow);color:#fff}.key.absent{background:var(--grey);color:#fff}
 
-  /* ---------- crossword ---------- */
-  .x-layout{width:100%;display:flex;flex-direction:column;align-items:center;gap:14px}
-  .x-main{width:100%;max-width:520px;display:flex;flex-direction:column;align-items:center;gap:10px}
-  .xbar{width:100%;display:flex;justify-content:space-between;align-items:center;font-weight:700;font-variant-numeric:tabular-nums}
-  .cluebar{width:100%;background:var(--blue);padding:10px 12px;border-radius:8px;font-size:15px;min-height:44px;display:flex;align-items:center}
-  .xw{container-type:inline-size;display:grid;border:2px solid var(--ink);width:min(100%,480px,max(240px,calc(100dvh - var(--hdr) - var(--dev) - 430px)));aspect-ratio:1}
-  .cell{border:1px solid #999;position:relative;overflow:hidden;min-width:0;min-height:0;line-height:1;display:grid;place-items:center;font-size:calc(100cqw / var(--cols,5) * .55);font-weight:500;cursor:pointer;background:#fff;user-select:none}
-  .cell.black{background:var(--ink);cursor:default}
-  .cell.hl{background:var(--blue)}
-  .cell.sel{background:var(--gold)}
-  .cell.bad{color:#d32f2f}
-  .cell small{position:absolute;top:2px;left:4px;font-size:max(9px,calc(100cqw / var(--cols,5) * .18));font-weight:400;color:#333}
-  .clues{display:grid;grid-template-columns:1fr 1fr;gap:14px;width:100%;max-width:520px;font-size:14px}
-  .clues h3{margin:0 0 4px;font-size:12px;letter-spacing:1px;text-transform:uppercase}
-  .clues div div{padding:6px 8px;cursor:pointer;border-radius:6px}
-  .clues div div.cur{background:var(--blue)}
-  @media (min-width:900px){
-    .x-layout{flex-direction:row;align-items:flex-start;justify-content:center;gap:48px}
-    .x-main{flex:0 0 520px}
-    .clues{grid-template-columns:1fr;max-width:340px;font-size:16px;margin-top:6px}
-  }
-  @media (hover:hover) and (pointer:fine){#xKb{display:none}.xw{width:min(100%,480px,max(240px,calc(100dvh - var(--hdr) - var(--dev) - 250px)))}}
-
-  /* ---------- globe + inputs ---------- */
-  .g-layout{width:100%;display:flex;flex-direction:column;align-items:center;gap:12px}
-  .g-globe{width:100%;display:flex;justify-content:center}
-  .g-panel{width:100%;max-width:520px;display:flex;flex-direction:column;gap:12px}
-  #gWrap,#sWrap{position:relative;width:100%;max-width:540px;display:flex;justify-content:center}
-  .gtools{position:absolute;right:0;top:0;display:flex;flex-direction:column;gap:6px}
-  .gtools button{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:#fff;font-size:18px;cursor:pointer}
-  .ginput{position:relative;display:flex;gap:8px;width:100%}
-  .ginput input{flex:1;padding:12px 14px;font-size:16px;border:2px solid var(--line);border-radius:10px;min-width:0}
-  .ginput input:focus{outline:0;border-color:var(--ink)}
-  #gSug,#sSug{display:none;position:absolute;left:0;right:100px;top:100%;margin-top:4px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.15);z-index:6;overflow:hidden}
-  #gSug div,#sSug div{padding:12px 14px;cursor:pointer;display:flex;justify-content:space-between;gap:10px}
-  #gSug div:hover,#sSug div:hover{background:#f0f0f0}
-  #sSug small{color:#888;white-space:nowrap}
-  .gbar{width:100%;display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;font-weight:700;font-size:14px}
-  .gbar span:last-child{display:flex;gap:6px}
-  .gbar button{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 12px;min-height:36px;font-size:13px;cursor:pointer}
-  .glist{width:100%;display:flex;flex-direction:column;gap:5px}
-  .gitem{display:flex;justify-content:space-between;gap:10px;padding:11px 12px;border-radius:8px;font-weight:700;font-size:15px;color:#222}
-  .gitem.last{outline:2px solid var(--ink)}
-  @media (min-width:900px){
-    .g-layout{flex-direction:row;align-items:flex-start;justify-content:center;gap:40px}
-    .g-globe{flex:1.15}
-    .g-panel{flex:1;margin-top:8px}
-  }
-
-  /* ---------- quiz ---------- */
-  .qdots{display:flex;gap:8px}.qdots i{width:34px;height:6px;border-radius:3px;background:var(--line)}.qdots i.now{background:var(--ink)}.qdots i.done{background:var(--green)}
-  .qcard{width:100%;max-width:560px;border:1px solid var(--line);border-radius:16px;padding:clamp(16px,4vw,28px);display:flex;flex-direction:column;gap:14px}
-  .qnum{font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#777;font-weight:700}
-  .qtext{font:700 clamp(20px,5.2vw,26px)/1.3 Georgia,serif}
-  .qans{display:none;flex-direction:column;align-items:center;gap:8px;text-align:center;background:#eef7f0;border-radius:12px;padding:20px}
-  .qans.on{display:flex}.qans.miss{background:#faf3e3}
-  .qans small{font-size:12px;letter-spacing:1px;text-transform:uppercase;font-weight:700;color:#555}
-  .qans b{font:700 clamp(20px,5.5vw,26px) Georgia,serif}
-  .qans span{color:#444}
-
-  /* ---------- finale ---------- */
-  video{width:100%;max-width:760px;max-height:calc(100dvh - var(--hdr) - var(--dev) - 120px);border-radius:12px;background:#000;display:none}
-  #question{display:none;flex-direction:column;align-items:center;gap:16px}
+  /* ---------- proposal ---------- */
+  #question{display:flex;flex-direction:column;align-items:center;gap:18px}
   #yesrow{display:none;gap:12px;flex-wrap:wrap;justify-content:center}
-  #yesmsg{font:700 clamp(26px,7vw,40px) Georgia,serif;text-align:center;display:none}
+  #yesmsg{font:700 clamp(28px,8vw,44px) Georgia,serif;text-align:center;display:none}
+  #lead{opacity:0;transition:opacity 1.5s;color:#dfe8ff;font-size:clamp(16px,4.4vw,20px)}
+  #lead.on{opacity:1}
   #rain{position:fixed;inset:0;pointer-events:none;width:100%;height:100%;z-index:46}
-  #confetti{position:fixed;inset:0;pointer-events:none;width:100%;height:100%;z-index:45}
-  .tiny{font-size:13px;color:#888;background:none;border:0;text-decoration:underline;cursor:pointer;padding:8px}
-
-  /* ---------- dev bar ---------- */
-  #devbar{position:fixed;bottom:0;left:0;right:0;z-index:50;height:44px;background:#222;color:#fff;display:flex;gap:6px;justify-content:center;align-items:center;padding:0 6px;font-size:12px;overflow-x:auto;white-space:nowrap}
-  #devbar button{background:#444;color:#fff;border:0;border-radius:4px;padding:7px 10px;cursor:pointer;font-size:12px;flex:none}
-  #devbar button.cur{background:var(--green)}
+  #sky{position:fixed;inset:0;width:100%;height:100%;z-index:0;opacity:0;pointer-events:none;transition:opacity 2.4s ease}
+  body.night{background:#050a1c;color:#fff}
+  body.night #sky{opacity:1}
+  body.night header{background:transparent;border-color:transparent}
+  body.night header h1{opacity:0}
+  body.night .tile.correct{background:#f0c14b;border-color:#f0c14b;color:#1a1f4a}
+  #ytbox{position:fixed;left:0;bottom:0;width:220px;height:124px;opacity:.01;pointer-events:none;z-index:-1;overflow:hidden}
+  .nametiles .tile{--s:min(58px,calc((100vw - 2*var(--pad) - 24px)/5))}
 </style>
 </head>
 <body>
 <header>
-  <h1>Today's Puzzles</h1>
-  <div class="pips"></div>
+  <h1>Today's Puzzle</h1>
+  <button class="chip" id="musicBtn" hidden>♪ On</button>
 </header>
+<canvas id="sky"></canvas>
 <main>
   <section class="screen mid" id="intro">
-    <h2 id="hello">Puzzles made just for you</h2>
-    <p class="sub" id="introSub">Solve them all to unlock something.</p>
-    <div class="cards">
-      <div class="card"><div class="ic" style="background:var(--green)">W</div><div><b>The Word</b><span>Six tries to guess the hidden word</span></div></div>
-      <div class="card"><div class="ic" style="background:#5b8fd6">M</div><div><b>The Mini</b><span>A quick five-by-five crossword</span></div></div>
-      <div class="card" id="cardGlobe"><div class="ic" style="background:#d9694f">P</div><div><b>The Place</b><span>Find the mystery country</span></div></div>
-      <div class="card"><div class="ic" style="background:#d9694f">S</div><div><b>The Spot</b><span>Find the mystery NSW suburb</span></div></div>
-      <div class="card"><div class="ic" style="background:#8a6bc1">U</div><div><b>About Us</b><span>Three questions, one answer each</span></div></div>
-    </div>
+    <div class="board nametiles" id="nameTiles"></div>
+    <h2 id="hello">A little game for you</h2>
+    <p class="sub">Guess the hidden word in six tries. Turn your sound on. 🔊</p>
     <button class="btn" id="startBtn">Play</button>
   </section>
 
   <section class="screen" id="wordle">
-    <h2>1 · The Word</h2>
+    <h2>Guess the word</h2>
     <div class="msg" id="wMsg"></div>
     <div class="board" id="wBoard"></div>
-    <div class="win" id="wWin"><b></b><button class="btn green">Next puzzle →</button></div>
+    <div class="win" id="wWin"><b></b><button class="btn green">Continue →</button></div>
     <div class="kb" id="wKb"></div>
   </section>
 
-  <section class="screen" id="crossword">
-    <h2>2 · The Mini</h2>
-    <div class="x-layout">
-      <div class="x-main">
-        <div class="xbar"><span>⏱ <span id="xTimer">0:00</span></span><button class="chip" id="xCheck">Check</button></div>
-        <div class="cluebar" id="xClue"></div>
-        <div class="xw" id="xGrid"></div>
-        <div class="msg" id="xMsg"></div>
-        <div class="kb" id="xKb"></div>
-      </div>
-      <div class="clues"><div><h3>Across</h3><div id="xA"></div></div><div><h3>Down</h3><div id="xD"></div></div></div>
-    </div>
-    <div class="win" id="xWin"><b></b><button class="btn green">Next puzzle →</button></div>
-  </section>
-
-  <section class="screen" id="globle">
-    <h2>The Place</h2>
-    <p class="sub">Find the mystery country. Each guess is coloured by how close its border is: the redder, the closer. Drag to spin the globe, scroll or pinch to zoom.</p>
-    <div class="g-layout">
-      <div class="g-globe"><div id="gWrap"><canvas id="globe"></canvas>
-        <div class="gtools"><button id="gZin" title="Zoom in">+</button><button id="gZout" title="Zoom out">−</button><button id="gReset" title="Reset view">⟲</button></div>
-      </div></div>
-      <div class="g-panel">
-        <div class="ginput"><input id="gIn" placeholder="Enter country name…" autocomplete="off" autocapitalize="words"><div id="gSug"></div><button class="btn" id="gBtn">Guess</button></div>
-        <div class="msg" id="gMsg"></div>
-        <div class="gbar"><span id="gCount"></span><span><button id="gUnits">Showing km</button><button id="gHint">Hint</button><button id="gGive">Give up</button></span></div>
-        <div class="glist" id="gGuesses"></div>
-      </div>
-    </div>
-    <div class="win" id="gWin"><b></b><button class="btn green">Continue →</button></div>
-  </section>
-
-  <section class="screen" id="nsw">
-    <h2>3 · The Spot</h2>
-    <p class="sub">Find the mystery suburb in NSW. Each guess is coloured by how close its border is: the redder, the closer. Drag to move the map, scroll or pinch to zoom (zoom out to see all of NSW).</p>
-    <div class="g-layout">
-      <div class="g-globe"><div id="sWrap"><canvas id="sMap"></canvas>
-        <div class="gtools"><button id="sZin" title="Zoom in">+</button><button id="sZout" title="Zoom out">−</button><button id="sReset" title="Reset view">⟲</button></div>
-      </div></div>
-      <div class="g-panel">
-        <div class="ginput"><input id="sIn" placeholder="Enter a suburb, e.g. Parramatta" autocomplete="off" autocapitalize="words"><div id="sSug"></div><button class="btn" id="sBtn">Guess</button></div>
-        <div class="msg" id="sMsg"></div>
-        <div class="gbar"><span id="sCount"></span><span><button id="sUnits">Showing km</button><button id="sHint">Hint</button><button id="sGive">Give up</button></span></div>
-        <div class="glist" id="sGuesses"></div>
-      </div>
-    </div>
-    <div class="win" id="sWin"><b></b><button class="btn green">Continue →</button></div>
-  </section>
-
-  <section class="screen mid" id="quiz">
-    <h2>4 · About Us</h2>
-    <p class="sub">Three questions about us. One answer each.</p>
-    <div class="qdots" id="zDots"><i></i><i></i><i></i></div>
-    <div class="qcard" id="zCard">
-      <div class="qnum" id="zNum"></div>
-      <div class="qtext" id="zText"></div>
-      <div class="ginput" id="zRow"><input id="zIn" autocomplete="off"><button class="btn" id="zBtn">Guess</button></div>
-      <div class="msg" id="zMsg"></div>
-      <div class="gbar" id="zBar"><span id="zTries"></span><span><button id="zHint">Hint</button><button id="zGive" style="display:none">Show answer</button></span></div>
-      <div class="qans" id="zAns"><small></small><b></b><span></span><button class="btn green" id="zNext"></button></div>
-    </div>
-    <div class="win" id="zWin"><b></b><button class="btn green">Continue →</button></div>
-  </section>
-
   <section class="screen mid" id="finale">
-    <div id="pre" style="display:flex;flex-direction:column;align-items:center;gap:16px">
-      <h2 id="lead"></h2>
-      <button class="btn" id="playBtn">▶ Play</button>
-    </div>
-    <video id="vid" playsinline controls></video>
-    <button class="tiny" id="vidSkip" style="display:none">continue →</button>
+    <p class="sub" id="lead"></p>
     <div id="question">
       <div class="board" id="qBoard"></div>
       <div id="yesrow"><button class="btn green">YES!</button><button class="btn green">Obviously yes!</button></div>
@@ -323,51 +127,108 @@ const CONFIG = {
     </div>
   </section>
 </main>
-<canvas id="confetti"></canvas>
 <canvas id="rain"></canvas>
+<div id="ytbox" aria-hidden="true"><div id="ytp"></div></div>
 
 <script>
 const $ = s => document.querySelector(s);
 const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
-const ORDER = ['intro','wordle','crossword', ...(CONFIG.globle.enabled ? ['globle'] : []), 'nsw','quiz','finale'];
-const ROUNDS = ORDER.length - 2;
-(function(){ const box = document.querySelector('.pips'); box.innerHTML = ''; for (let i = 1; i <= ROUNDS; i++){ const d = document.createElement('div'); d.className = 'pip'; d.textContent = i; box.append(d); } })();
-function sure(b){ if (b.dataset.armed){ delete b.dataset.armed; b.textContent = b._t; return true; }
-  b._t = b.textContent; b.dataset.armed = '1'; b.textContent = 'Tap again to reveal';
-  setTimeout(() => { if (b.dataset.armed){ delete b.dataset.armed; b.textContent = b._t; } }, 2500); return false; }
+const ORDER = ['intro','wordle','finale'];
 let activeKey = null;
 const started = {};
+const KEYS = {};
 
 function show(name){
   document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === name));
-  const idx = ORDER.indexOf(name);
-  document.querySelectorAll('.pip').forEach((p,k) => { const i = k+1; p.classList.toggle('done', idx > i); p.classList.toggle('now', idx === i); });
   activeKey = null;
   document.querySelectorAll('.win').forEach(w => w.classList.remove('on'));
-  document.querySelectorAll('#devbar button').forEach(b => b.classList.toggle('cur', b.dataset.s === name));
   if (!started[name]) { started[name] = true; INIT[name](); } else if (KEYS[name]) activeKey = KEYS[name];
   window.scrollTo(0,0);
 }
-const KEYS = {};
-function win(prefix, text, next){
+function win(prefix, text){
   activeKey = null;
   const w = $('#'+prefix+'Win'); w.querySelector('b').textContent = text;
-  w.querySelector('button').onclick = () => { w.classList.remove('on'); show(ORDER[ORDER.indexOf(document.querySelector('.screen.on').id) + 1]); };
+  w.querySelector('button').onclick = () => { w.classList.remove('on'); rain.stop && rain.stop(); show(ORDER[ORDER.indexOf(document.querySelector('.screen.on').id) + 1]); };
   setTimeout(() => { w.classList.add('on'); rain(CONFIG.rainEmoji || '🫦'); }, 1100);
 }
+function flash(id, text, ms=1800){ const m = $(id); m.textContent = text; clearTimeout(m._t); if (ms) m._t = setTimeout(() => m.textContent = '', ms); }
+
+/* ---------- falling emoji ---------- */
 let rainId = 0;
-function rain(ch){
+function rain(chars, opt){
+  opt = opt || {}; const list = Array.isArray(chars) ? chars : [chars];
   const cv = $('#rain'), ctx = cv.getContext('2d'), dpr = window.devicePixelRatio || 1, W = innerWidth, H = innerHeight;
   cv.width = W*dpr; cv.height = H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); cancelAnimationFrame(rainId);
-  const P = Array.from({length: 48}, () => ({x:Math.random()*W, y:-30 - Math.random()*H*.9, s:26 + Math.random()*30, vy:2.6 + Math.random()*3.6, vx:-.6 + Math.random()*1.2, r:Math.random()*6.28, vr:-.04 + Math.random()*.08}));
+  const mk = fresh => ({ch:list[Math.random()*list.length|0], x:Math.random()*W, y: fresh ? -30 : -30 - Math.random()*H*.9, s:24 + Math.random()*30, vy:2.2 + Math.random()*3.4, vx:-.6 + Math.random()*1.2, r:Math.random()*6.28, vr:-.04 + Math.random()*.08});
+  const P = Array.from({length: opt.count || 48}, () => mk(false));
+  rain.stop = () => { cancelAnimationFrame(rainId); ctx.clearRect(0,0,W,H); };
   (function loop(){
     ctx.clearRect(0,0,W,H); let alive = 0;
-    P.forEach(p => { p.y += p.vy; p.x += p.vx; p.r += p.vr; if (p.y < H + 50) alive++;
-      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.r); ctx.font = p.s + 'px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(ch,0,0); ctx.restore(); });
-    if (alive) rainId = requestAnimationFrame(loop); else ctx.clearRect(0,0,W,H);
+    P.forEach((p,i) => { p.y += p.vy; p.x += p.vx; p.r += p.vr;
+      if (p.y > H + 50){ if (opt.loop) P[i] = mk(true); } else alive++;
+      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.r); ctx.font = p.s + 'px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(p.ch,0,0); ctx.restore(); });
+    if (alive || opt.loop) rainId = requestAnimationFrame(loop); else ctx.clearRect(0,0,W,H);
   })();
 }
-function flash(id, text, ms=1800){ const m = $(id); m.textContent = text; clearTimeout(m._t); if (ms) m._t = setTimeout(() => m.textContent = '', ms); }
+
+/* ---------- background song (YouTube player, started by her first tap) ---------- */
+const music = {player:null, ready:false, want:false, on:false, begun:false};
+function musicLabel(){ const b = $('#musicBtn'); b.hidden = false; b.textContent = music.on ? '♪ On' : '♪ Off'; }
+function startMusic(){
+  if (music.begun) return; music.begun = true; music.want = true;
+  window.onYouTubeIframeAPIReady = () => {
+    music.player = new YT.Player('ytp', { width:220, height:124, videoId:CONFIG.music.youtubeId,
+      playerVars:{ playsinline:1, controls:0, rel:0, loop:1, playlist:CONFIG.music.youtubeId, modestbranding:1 },
+      events:{
+        onReady: () => { music.ready = true; if (music.want) music.player.playVideo(); },
+        onStateChange: e => { music.on = e.data === 1; musicLabel(); },
+        onError: () => { const b = $('#musicBtn'); b.hidden = false; b.textContent = '♪ Open song'; b.onclick = () => window.open('https://www.youtube.com/watch?v=' + CONFIG.music.youtubeId, '_blank'); }
+      } });
+  };
+  const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; document.head.append(s);
+  musicLabel();
+}
+$('#musicBtn').onclick = () => { if (!music.ready) return; if (music.on){ music.want = false; music.player.pauseVideo(); } else { music.want = true; music.player.playVideo(); } };
+// some phones only allow sound from a direct tap, so any tap nudges it to play
+document.addEventListener('pointerdown', () => { if (music.ready && music.want && !music.on) music.player.playVideo(); });
+
+/* ---------- live starry night ---------- */
+function startSky(){
+  const cv = $('#sky'), ctx = cv.getContext('2d'), still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let W, H, m, dpr, stars, bigStars, last = 0, t = 0, shoot = null, nextShoot = 3;
+  function size(){ dpr = Math.min(window.devicePixelRatio || 1, 1.5); W = innerWidth; H = innerHeight; m = Math.min(W,H); cv.width = W*dpr; cv.height = H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+    stars = Array.from({length: Math.round(W*H/8000)}, () => ({x:Math.random()*W, y:Math.random()*H*.86, r:.5 + Math.random()*1.5, p:Math.random()*6.28, s:.8 + Math.random()*2.2}));
+    bigStars = [[.14,.17],[.31,.09],[.52,.2],[.7,.11],[.88,.31],[.4,.34],[.09,.42],[.64,.42],[.93,.1],[.24,.3],[.5,.07]].map(([a,b]) => ({x:a*W, y:b*H, r:m*(.016 + Math.random()*.012), p:Math.random()*6.28})); }
+  function band(i){ const y0 = H*(.1 + i*.075); ctx.beginPath();
+    for (let x = -20; x <= W + 20; x += 14){ const y = y0 + Math.sin(x*.006 + t*.35 + i)*H*.04 + Math.sin(x*.017 - t*.5 + i*2)*H*.014; x === -20 ? ctx.moveTo(x,y) : ctx.lineTo(x,y); }
+    ctx.strokeStyle = i % 2 ? 'rgba(120,170,245,.10)' : 'rgba(170,205,255,.09)'; ctx.lineWidth = m*(.022 + (i%3)*.012); ctx.lineCap = 'round'; ctx.stroke(); }
+  function spiral(cx, cy, base, dir){
+    for (let k = 0; k < 10; k++){ const r = base*(.14 + k*.095), a0 = dir*t*.25 + k*.5;
+      ctx.beginPath(); ctx.arc(cx, cy, r, a0, a0 + Math.PI*1.45); ctx.strokeStyle = 'rgba(195,222,255,' + (.15 - k*.008) + ')'; ctx.lineWidth = m*.011; ctx.stroke(); } }
+  function moon(){ const x = W*.85, y = H*.15, r = m*.07, pulse = 1 + Math.sin(t*1.2)*.04;
+    for (let k = 3; k >= 1; k--){ ctx.beginPath(); ctx.arc(x, y, r*(1 + k*.55)*pulse, 0, 7); ctx.fillStyle = 'rgba(255,220,120,' + (.05 + (3-k)*.02) + ')'; ctx.fill(); }
+    ctx.save(); ctx.beginPath(); ctx.rect(0,0,W,H); ctx.arc(x + r*.45, y - r*.15, r*.86, 0, 7, true); ctx.clip(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = '#ffd860'; ctx.fill(); ctx.restore(); }
+  function bigStar(s){ const tw = .75 + .25*Math.sin(t*1.4 + s.p);
+    const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r*3.4); g.addColorStop(0, 'rgba(255,235,140,' + (.75*tw) + ')'); g.addColorStop(1, 'rgba(255,235,140,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(s.x, s.y, s.r*3.4, 0, 7); ctx.fill();
+    for (let k = 1; k <= 3; k++){ ctx.beginPath(); ctx.arc(s.x, s.y, s.r*(.9 + k*.55), 0, 7); ctx.strokeStyle = 'rgba(255,230,140,' + (.22*tw/k) + ')'; ctx.lineWidth = 1.4; ctx.stroke(); }
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r*.55, 0, 7); ctx.fillStyle = '#fff3b8'; ctx.fill(); }
+  function frame(now){
+    const dt = Math.min(.05, (now - last)/1000 || 0); last = now; if (!still) t += dt;
+    const bg = ctx.createLinearGradient(0,0,0,H); bg.addColorStop(0,'#0a1640'); bg.addColorStop(.5,'#1b3d92'); bg.addColorStop(.85,'#12256a'); bg.addColorStop(1,'#080e2c'); ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+    for (let i = 0; i < 9; i++) band(i);
+    spiral(W*.62, H*.3, m*.2, 1); spiral(W*.27, H*.25, m*.14, -1);
+    stars.forEach(s => { const a = .45 + .55*Math.sin(t*s.s + s.p); ctx.fillStyle = 'rgba(255,246,207,' + Math.max(.1,a) + ')'; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.fill(); });
+    bigStars.forEach(bigStar); moon();
+    if (!shoot && t > nextShoot){ shoot = {x:Math.random()*W*.7, y:Math.random()*H*.3, p:0}; }
+    if (shoot){ shoot.p += dt*1.1; const len = m*.22, x = shoot.x + shoot.p*W*.4, y = shoot.y + shoot.p*H*.18; const g = ctx.createLinearGradient(x, y, x - len, y - len*.45); g.addColorStop(0,'rgba(255,255,255,.9)'); g.addColorStop(1,'rgba(255,255,255,0)');
+      ctx.strokeStyle = g; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x - len, y - len*.45); ctx.stroke(); if (shoot.p > 1){ shoot = null; nextShoot = t + 5 + Math.random()*6; } }
+    ctx.beginPath(); ctx.moveTo(0,H); for (let x = 0; x <= W; x += 16) ctx.lineTo(x, H*.91 + Math.sin(x*.004)*H*.03 + Math.sin(x*.011 + 1)*H*.014); ctx.lineTo(W,H); ctx.closePath(); ctx.fillStyle = '#04081a'; ctx.fill();
+    for (let i = 0; i < 14; i++){ const x = (i*97 % 100)/100*W, y = H*.955 + ((i*37)%5)*H*.006; ctx.fillStyle = 'rgba(255,200,90,' + (.5 + .4*Math.sin(t*.8 + i*3)) + ')'; ctx.fillRect(x, y, 3, 3); }
+    if (!still) requestAnimationFrame(frame);
+  }
+  size(); window.addEventListener('resize', () => { size(); if (still) frame(performance.now()); }); requestAnimationFrame(frame);
+}
 
 function buildKb(box, onKey){
   box.innerHTML = '';
@@ -385,70 +246,16 @@ function buildKb(box, onKey){
 document.addEventListener('keydown', e => {
   if (!activeKey || e.ctrlKey || e.metaKey || e.altKey) return;
   if (/^[a-zA-Z]$/.test(e.key)) activeKey(e.key.toUpperCase());
-  else if (['Enter','Backspace','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) { e.preventDefault(); activeKey(e.key); }
+  else if (['Enter','Backspace'].includes(e.key)) { e.preventDefault(); activeKey(e.key); }
 });
-
-/* Arranges the answers into a crossword grid (returns rows of letters, '#' = black square). */
-function layoutCrossword(answers){
-  const words = answers.map(a => a.toUpperCase().replace(/[^A-Z]/g,'')).sort((a,b) => b.length - a.length);
-  let best = null, nodes = 0;
-  function fits(cells, w, r, c, dr, dc){
-    let cross = 0;
-    const key = (y,x) => y+','+x;
-    if (cells.has(key(r-dr, c-dc)) || cells.has(key(r+dr*w.length, c+dc*w.length))) return -1;
-    for (let i = 0; i < w.length; i++){
-      const y = r+dr*i, x = c+dc*i, ex = cells.get(key(y,x));
-      if (ex){ if (ex.ch !== w[i] || ex.dirs.has(dr ? 'D' : 'A')) return -1; cross++; }
-      else if (cells.has(key(y+dc, x+dr)) || cells.has(key(y-dc, x-dr))) return -1;   // would touch a neighbouring letter
-    }
-    return cross;
-  }
-  function put(cells, w, r, c, dr, dc){
-    const added = [];
-    for (let i = 0; i < w.length; i++){ const k = (r+dr*i)+','+(c+dc*i); let ex = cells.get(k);
-      if (!ex){ ex = {ch:w[i], dirs:new Set()}; cells.set(k, ex); added.push(k); } ex.dirs.add(dr ? 'D' : 'A'); }
-    return added;
-  }
-  function undo(cells, w, r, c, dr, dc, added){
-    for (let i = 0; i < w.length; i++){ const k = (r+dr*i)+','+(c+dc*i), ex = cells.get(k); ex.dirs.delete(dr ? 'D' : 'A'); }
-    added.forEach(k => cells.delete(k));
-  }
-  function score(cells){
-    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-    cells.forEach((_, k) => { const [y,x] = k.split(',').map(Number); x0 = Math.min(x0,x); x1 = Math.max(x1,x); y0 = Math.min(y0,y); y1 = Math.max(y1,y); });
-    const w = x1-x0+1, h = y1-y0+1; return {w, h, x0, y0, s: w*h + 6*Math.abs(w-h)};
-  }
-  function search(cells, placed, idx){
-    if (++nodes > 400000) return;
-    if (idx === words.length){
-      const sc = score(cells);
-      if (!best || sc.s < best.sc.s){ const g = Array.from({length:sc.h}, () => Array(sc.w).fill('#'));
-        cells.forEach((v,k) => { const [y,x] = k.split(',').map(Number); g[y-sc.y0][x-sc.x0] = v.ch; }); best = {sc, g:g.map(r => r.join(''))}; }
-      return;
-    }
-    const w = words[idx];
-    for (const p of placed){
-      for (let i = 0; i < p.w.length; i++) for (let j = 0; j < w.length; j++){
-        if (p.w[i] !== w[j]) continue;
-        const dr = p.dr ? 0 : 1, dc = p.dr ? 1 : 0;                 // perpendicular to the word we cross
-        const r = p.r + p.dr*i - dr*j, c = p.c + p.dc*i - dc*j;
-        if (fits(cells, w, r, c, dr, dc) < 1) continue;
-        const added = put(cells, w, r, c, dr, dc); placed.push({w, r, c, dr, dc});
-        search(cells, placed, idx+1);
-        placed.pop(); undo(cells, w, r, c, dr, dc, added);
-      }
-    }
-  }
-  const cells = new Map(), first = words[0]; put(cells, first, 0, 0, 0, 1);
-  search(cells, [{w:first, r:0, c:0, dr:0, dc:1}], 1);
-  return best ? best.g : null;
-}
 
 const INIT = {
   intro(){
-    if (CONFIG.herName) $('#hello').textContent = `Puzzles made just for you, ${CONFIG.herName}`;
-    if (!CONFIG.globle.enabled) $('#cardGlobe').style.display = 'none';
-    $('#startBtn').onclick = () => show('wordle');
+    if (CONFIG.herName) $('#hello').textContent = `A little game for you, ${CONFIG.herName}`;
+    const box = $('#nameTiles'), tr = el('div','trow'); box.style.setProperty('--n', 5); box.style.setProperty('--rows', 1);
+    [...(CONFIG.herName || 'HELLO').toUpperCase().slice(0,7)].forEach((ch,i) => { const t = el('div','tile correct', ch); tr.append(t); });
+    box.append(tr);
+    $('#startBtn').onclick = () => { startMusic(); show('wordle'); };
   },
 
   /* ---------------- WORDLE ---------------- */
@@ -471,7 +278,7 @@ const INIT = {
           if (res[i] === 'correct') k.className = 'key correct';
           else if (res[i] === 'present' && !k.classList.contains('correct')) k.className = 'key present';
           else if (res[i] === 'absent' && !k.classList.contains('correct') && !k.classList.contains('present')) k.className = 'key absent'; });
-        if (g === ans) return win('w', CONFIG.wordle.winText, 'crossword');
+        if (g === ans) return win('w', CONFIG.wordle.winText);
         row++; cur = '';
         if (row === R){ flash('#wMsg', CONFIG.wordle.hint || 'So close. Try again!', 0); setTimeout(() => { build(); busy = false; }, 1600); }
         else busy = false;
@@ -487,375 +294,27 @@ const INIT = {
     build(); buildKb($('#wKb'), k => activeKey && activeKey(k));
   },
 
-  /* ---------------- CROSSWORD ---------------- */
-  crossword(){
-    const CW = CONFIG.crossword.words, G = layoutCrossword(CW.map(w => w.answer)), RN = G.length, CN = G[0].length;
-    const info = {}; CW.forEach(w => { const raw = w.answer.toUpperCase().trim(); info[raw.replace(/[^A-Z]/g,'')] = { clue: w.clue, pat: raw.split(/[^A-Z]+/).filter(Boolean).map(s => s.length).join(',') }; });
-    const clueText = w => { const i = info[w.cells.map(([r,c]) => G[r][c]).join('')]; return i ? `${i.clue} (${i.pat})` : ''; };
-    const black = (r,c) => r < 0 || c < 0 || r >= RN || c >= CN || G[r][c] === '#';
-    const grid = $('#xGrid'); grid.style.setProperty('--cols', CN); grid.style.gridTemplateColumns = `repeat(${CN},minmax(0,1fr))`; grid.style.gridTemplateRows = `repeat(${RN},minmax(0,1fr))`; grid.style.aspectRatio = CN + '/' + RN;
-    const cells = [], words = [], at = {}; let num = 0;
-    for (let r = 0; r < RN; r++){ cells.push([]); for (let c = 0; c < CN; c++){
-      const d = el('div','cell' + (black(r,c) ? ' black' : '')); const cell = {el:d, r, c, v:'', sol:G[r][c]}; cells[r].push(cell); grid.append(d);
-      if (black(r,c)) continue;
-      at[r+','+c] = {};
-      const sa = black(r,c-1) && !black(r,c+1), sd = black(r-1,c) && !black(r+1,c);
-      if (sa || sd){ num++; d.append(el('small','',num)); }
-      if (sa){ const w = {id:num+'A', dir:'A', cells:[]}; for (let x = c; !black(r,x); x++) w.cells.push([r,x]); words.push(w); }
-      if (sd){ const w = {id:num+'D', dir:'D', cells:[]}; for (let y = r; !black(y,c); y++) w.cells.push([y,c]); words.push(w); }
-      const span = el('span'); d.append(span); cell.span = span;
-      d.onclick = () => select(r,c,true);
-    }}
-    words.forEach(w => { w.cells.forEach(([r,c]) => at[r+','+c][w.dir] = w);
-      const item = el('div','', `${parseInt(w.id)}. ${clueText(w)}`); item.onclick = () => { dir = w.dir; select(w.cells[0][0], w.cells[0][1]); };
-      w.item = item; $(w.dir === 'A' ? '#xA' : '#xD').append(item); });
-    let sr = words[0].cells[0][0], sc = words[0].cells[0][1], dir = words[0].dir, solved = false;
-    function select(r,c,click){
-      if (black(r,c) || solved) return;
-      const m = at[r+','+c];
-      if (click && r === sr && c === sc && m[dir === 'A' ? 'D' : 'A']) dir = dir === 'A' ? 'D' : 'A';
-      if (!m[dir]) dir = dir === 'A' ? 'D' : 'A';
-      sr = r; sc = c; render();
-    }
-    function render(){
-      const w = at[sr+','+sc][dir];
-      cells.flat().forEach(x => x.el.classList.remove('hl','sel'));
-      w.cells.forEach(([r,c]) => cells[r][c].el.classList.add('hl'));
-      cells[sr][sc].el.classList.add('sel');
-      words.forEach(x => x.item.classList.toggle('cur', x === w));
-      $('#xClue').textContent = `${w.id} · ${clueText(w)}`;
-    }
-    function step(delta){ const w = at[sr+','+sc][dir], i = w.cells.findIndex(([r,c]) => r === sr && c === sc) + delta;
-      if (i >= 0 && i < w.cells.length){ [sr,sc] = w.cells[i]; return true; } return false; }
-    function setCell(v){ const x = cells[sr][sc]; x.v = v; x.span.textContent = v; x.el.classList.remove('bad'); }
-    function check(){
-      const open = cells.flat().filter(x => x.sol !== '#');
-      if (open.some(x => !x.v)) return;
-      if (open.every(x => x.v === x.sol)){ solved = true; cells.flat().forEach(x => x.el.classList.remove('hl','sel')); $('#xCheck').style.display = 'none'; $('#xMsg').textContent = ''; clearInterval(timer); win('x', `${CONFIG.crossword.winText} (Solved in ${clock()})`, 'globle'); }
-      else flash('#xMsg', 'Not quite. Tap Check to see which squares are off.', 4000);
-    }
-    const t0 = Date.now(), clock = () => { const s = Math.floor((Date.now() - t0)/1000); return Math.floor(s/60) + ':' + String(s % 60).padStart(2,'0'); };
-    const timer = setInterval(() => $('#xTimer').textContent = clock(), 1000);
-    $('#xCheck').onclick = () => cells.flat().forEach(x => x.el.classList.toggle('bad', !!x.v && x.v !== x.sol));
-    KEYS.crossword = activeKey = k => {
-      if (solved) return;
-      if (k === 'Backspace'){ if (cells[sr][sc].v) setCell(''); else if (step(-1)) setCell(''); }
-      else if (k.startsWith('Arrow')){ const [dr,dc] = {ArrowUp:[-1,0],ArrowDown:[1,0],ArrowLeft:[0,-1],ArrowRight:[0,1]}[k];
-        const want = dr ? 'D' : 'A'; if (dir !== want && at[sr+','+sc][want]) dir = want; else if (!black(sr+dr, sc+dc)){ sr += dr; sc += dc; if (!at[sr+','+sc][dir]) dir = dir === 'A' ? 'D' : 'A'; } }
-      else if (k === 'Enter'){ const i = words.indexOf(at[sr+','+sc][dir]), w = words[(i+1) % words.length]; dir = w.dir; [sr,sc] = w.cells[0]; }
-      else if (k.length === 1){ setCell(k); step(1); check(); }
-      if (!solved) render();
-    };
-    buildKb($('#xKb'), k => activeKey && activeKey(k)); render();
-  },
-
-  /* ---------------- GLOBLE ---------------- */
-  globle(){
-    const RENAME = {"Bosnia and Herz.":"Bosnia and Herzegovina","Central African Rep.":"Central African Republic","Dem. Rep. Congo":"Democratic Republic of the Congo","Dominican Rep.":"Dominican Republic","Eq. Guinea":"Equatorial Guinea","S. Sudan":"South Sudan","Solomon Is.":"Solomon Islands","eSwatini":"Eswatini","Macedonia":"North Macedonia","United States of America":"United States","Côte d'Ivoire":"Ivory Coast","Falkland Is.":"Falkland Islands","W. Sahara":"Western Sahara","Fr. S. Antarctic Lands":"French Southern Lands","N. Cyprus":"Northern Cyprus"};
-    const NOGUESS = new Set(['Antarctica','French Southern Lands','Falkland Islands','Northern Cyprus','Somaliland','Western Sahara','New Caledonia']);
-    const ALIAS = {"USA":"United States","US":"United States","America":"United States","United States of America":"United States","UK":"United Kingdom","Britain":"United Kingdom","Great Britain":"United Kingdom","England":"United Kingdom","UAE":"United Arab Emirates","DRC":"Democratic Republic of the Congo","DR Congo":"Democratic Republic of the Congo","Congo Kinshasa":"Democratic Republic of the Congo","Republic of the Congo":"Congo","Czech Republic":"Czechia","Burma":"Myanmar","Holland":"Netherlands","Turkiye":"Turkey","Swaziland":"Eswatini","East Timor":"Timor-Leste","Macedonia":"North Macedonia","Bosnia":"Bosnia and Herzegovina","CAR":"Central African Republic","Korea":"South Korea"};
-    const norm = s => s.toLowerCase().normalize('NFD').replace(/[^a-z]/g,'');
-    const feats = topojson.feature(WORLD, WORLD.objects.countries).features;
-    feats.forEach(f => { f.name = RENAME[f.properties.name] || f.properties.name; f.guessable = !NOGUESS.has(f.name);
-      // centre on the biggest piece (so France centres on Europe, not French Guiana)
-      let g = f.geometry; if (g.type === 'MultiPolygon'){ let best = null, ba = -1; g.coordinates.forEach(c => { const p = {type:'Polygon',coordinates:c}, a = d3.geoArea(p); if (a > ba){ ba = a; best = p; } }); g = best; }
-      f.center = d3.geoCentroid(g); f.pts = null; });
-    const byName = {}; feats.filter(f => f.guessable).forEach(f => byName[norm(f.name)] = f);
-    Object.entries(ALIAS).forEach(([a,n]) => { if (byName[norm(n)]) byName[norm(a)] = byName[norm(n)]; });
-    const names = feats.filter(f => f.guessable).map(f => f.name).sort();
-    const target = byName[norm(CONFIG.globle.answer)];
-    if (!target){ $('#gMsg').textContent = 'Config problem: unknown answer country "' + CONFIG.globle.answer + '"'; return; }
-
-    const R6371 = 6371;
-    const points = f => f.pts || (f.pts = (function(){ const out = []; (function walk(c){ if (typeof c[0] === 'number') out.push(c); else c.forEach(walk); })(f.geometry.coordinates); return out; })());
-    function borderDist(a, b){
-      if (a === b) return 0;
-      const A = points(a), B = points(b); let m = Infinity;
-      for (let i = 0; i < A.length; i++) for (let j = 0; j < B.length; j++){ const d = d3.geoDistance(A[i], B[j]); if (d < m) m = d; }
-      return m * R6371;
-    }
-    const rad = d => d*Math.PI/180;
-    function arrow(a, b){ const [l1,p1] = a.center.map(rad), [l2,p2] = b.center.map(rad);
-      const y = Math.sin(l2-l1)*Math.cos(p2), x = Math.cos(p1)*Math.sin(p2) - Math.sin(p1)*Math.cos(p2)*Math.cos(l2-l1);
-      return ['↑','↗','→','↘','↓','↙','←','↖'][Math.round(((Math.atan2(y,x)*180/Math.PI + 360) % 360)/45) % 8]; }
-    const heat = d => d3.interpolateYlOrRd(0.12 + 0.88 * (1 - Math.sqrt(Math.min(d, 14000) / 14000)));
-    const GREEN = '#4f9d69';
-
-    const guesses = []; let done = false, miles = false, hintN = 0;
-    const colors = new Map();
-
-    /* ---- globe drawing ---- */
-    const cv = $('#globe'), ctx = cv.getContext('2d');
-    const proj = d3.geoOrthographic().clipAngle(90).precision(0.4), path = d3.geoPath(proj, ctx);
-    const SPHERE = {type:'Sphere'}, GRAT = d3.geoGraticule10();
-    let S = 0, dpr = 1, lon = 10, lat = 25, zoom = 1, anim = 0;
-    function size(){ dpr = window.devicePixelRatio || 1; const maxH = innerHeight - 56 - (document.body.classList.contains('dev') ? 44 : 0) - (innerWidth >= 900 ? 170 : 270); S = Math.max(240, Math.min($('#gWrap').clientWidth, 540, maxH)); cv.width = S*dpr; cv.height = S*dpr; cv.style.width = cv.style.height = S+'px'; draw(); }
-    function draw(){
-      ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,S,S);
-      proj.translate([S/2,S/2]).scale((S/2 - 6)*zoom).rotate([-lon,-lat]);
-      const gr = ctx.createRadialGradient(S*.4,S*.35,S*.05,S/2,S/2,S/2); gr.addColorStop(0,'#e6f3fb'); gr.addColorStop(1,'#a9d1ea');
-      ctx.beginPath(); path(SPHERE); ctx.fillStyle = gr; ctx.fill();
-      ctx.beginPath(); path(GRAT); ctx.strokeStyle = 'rgba(70,120,160,.22)'; ctx.lineWidth = .6; ctx.stroke();
-      ctx.lineWidth = .6; ctx.strokeStyle = 'rgba(70,70,70,.55)';
-      feats.forEach(f => { ctx.beginPath(); path(f); ctx.fillStyle = colors.get(f) || '#d8dbd7'; ctx.fill(); ctx.stroke(); });
-      ctx.lineWidth = 1.4; ctx.strokeStyle = '#222';
-      colors.forEach((_, f) => { ctx.beginPath(); path(f); ctx.stroke(); });
-      ctx.beginPath(); path(SPHERE); ctx.lineWidth = 2; ctx.strokeStyle = '#6b97b8'; ctx.stroke();
-    }
-    function rotateTo(c, z){
-      cancelAnimationFrame(anim);
-      const l0 = lon, p0 = lat, z0 = zoom, dl = ((c[0] - l0 + 540) % 360) - 180, dp = c[1] - p0, dz = (z || zoom) - z0, t0 = performance.now(), T = 750;
-      (function step(now){ const k = Math.min(1, (now - t0)/T), e = k < .5 ? 2*k*k : 1 - Math.pow(-2*k + 2, 2)/2;
-        lon = l0 + dl*e; lat = Math.max(-85, Math.min(85, p0 + dp*e)); zoom = z0 + dz*e; draw(); if (k < 1) anim = requestAnimationFrame(step); })(t0);
-    }
-    /* drag to rotate, wheel / pinch / buttons to zoom */
-    const ptrs = new Map(); let pinch = 0;
-    cv.style.touchAction = 'none'; cv.style.cursor = 'grab';
-    cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, {x:e.clientX, y:e.clientY}); cancelAnimationFrame(anim); cv.style.cursor = 'grabbing'; if (ptrs.size === 2) pinch = 0; });
-    cv.addEventListener('pointermove', e => {
-      const p = ptrs.get(e.pointerId); if (!p) return;
-      if (ptrs.size === 2){ p.x = e.clientX; p.y = e.clientY; const [a,b] = [...ptrs.values()], d = Math.hypot(a.x-b.x, a.y-b.y); if (pinch) setZoom(zoom * d / pinch); pinch = d; return; }
-      lon -= (e.clientX - p.x) * 0.4 / zoom; lat = Math.max(-85, Math.min(85, lat + (e.clientY - p.y) * 0.4 / zoom)); p.x = e.clientX; p.y = e.clientY; draw();
-    });
-    const up = e => { ptrs.delete(e.pointerId); pinch = 0; cv.style.cursor = 'grab'; };
-    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
-    function setZoom(z){ zoom = Math.max(.9, Math.min(10, z)); draw(); }
-    cv.addEventListener('wheel', e => { e.preventDefault(); setZoom(zoom * Math.exp(-e.deltaY * .0015)); }, {passive:false});
-    $('#gZin').onclick = () => rotateTo([lon,lat], Math.min(10, zoom*1.6));
-    $('#gZout').onclick = () => rotateTo([lon,lat], Math.max(.9, zoom/1.6));
-    $('#gReset').onclick = () => rotateTo([10,25], 1);
-    window.addEventListener('resize', size);
-
-    /* ---- guessing ---- */
-    const inp = $('#gIn'), sug = $('#gSug');
-    const fmt = d => miles ? Math.round(d*0.621371).toLocaleString() + ' mi' : Math.round(d).toLocaleString() + ' km';
-    function suggest(){
-      const q = norm(inp.value); sug.innerHTML = ''; if (!q){ sug.style.display = 'none'; return; }
-      const m = names.filter(n => norm(n).startsWith(q)).concat(names.filter(n => !norm(n).startsWith(q) && norm(n).includes(q))).slice(0, 6);
-      m.forEach(n => { const o = el('div','',n); o.onmousedown = ev => { ev.preventDefault(); inp.value = n; guess(); }; sug.append(o); });
-      sug.style.display = m.length ? 'block' : 'none';
-    }
-    function list(){
-      const box = $('#gGuesses'); box.innerHTML = ''; $('#gCount').textContent = guesses.length ? `${guesses.length} guess${guesses.length > 1 ? 'es' : ''}` : 'No guesses yet';
-      const last = guesses[guesses.length-1];
-      [...guesses].sort((a,b) => a.d - b.d).forEach(g => { const it = el('div','gitem' + (g === last ? ' last' : '')); it.style.background = g.f === target ? GREEN : heat(g.d); if (g.f === target || g.d < 2500 && false) it.style.color = '#fff';
-        it.append(el('span','',g.f.name), el('span','', g.f === target ? '🎉' : `${fmt(g.d)} ${arrow(g.f, target)}`)); box.append(it); });
-    }
-    function finish(text, gaveUp){
-      done = true; colors.set(target, GREEN); rotateTo(target.center, 2.2); inp.disabled = true; $('#gBtn').disabled = true; sug.style.display = 'none';
-      win('g', text, 'quiz');
-    }
-    function guess(){
-      if (done) return;
-      const f = byName[norm(inp.value)] || (sug.firstChild && byName[norm(sug.firstChild.textContent)]);
-      if (!f) return flash('#gMsg', "I don't know that country. Pick one from the list.");
-      if (guesses.some(g => g.f === f)){ inp.value = ''; sug.style.display = 'none'; return flash('#gMsg', 'Already guessed ' + f.name); }
-      const d = borderDist(f, target); guesses.push({f, d}); inp.value = ''; sug.style.display = 'none';
-      colors.set(f, f === target ? GREEN : heat(d)); rotateTo(f.center); list();
-      if (f === target) finish(CONFIG.globle.winText);
-      else flash('#gMsg', d === 0 ? `${f.name} borders the mystery country!` : `${f.name} is ${fmt(d)} away`, 3000);
-    }
-    $('#gBtn').onclick = guess;
-    inp.addEventListener('input', suggest); inp.addEventListener('blur', () => setTimeout(() => sug.style.display = 'none', 150));
-    inp.addEventListener('keydown', e => { if (e.key === 'Enter') guess(); });
-    $('#gUnits').onclick = e => { miles = !miles; e.target.textContent = miles ? 'Showing miles' : 'Showing km'; list(); };
-    $('#gHint').onclick = () => {
-      if (done) return; const [tl, tp] = target.center, hints = [
-        `Hint: it's in the ${tp >= 0 ? 'Northern' : 'Southern'} and ${tl >= 0 ? 'Eastern' : 'Western'} hemisphere.`,
-        `Hint: its name starts with "${target.name[0]}".`,
-        `Hint: its name has ${target.name.replace(/[^A-Za-z]/g,'').length} letters.`];
-      flash('#gMsg', hints[Math.min(hintN, hints.length-1)], 0); hintN++; $('#gHint').textContent = hintN >= hints.length ? 'Hint' : `Hint (${hintN}/${hints.length})`;
-    };
-    $('#gGive').onclick = () => { if (!done && sure($('#gGive'))) finish(`It was ${target.name}. No worries, onwards!`, true); };
-    size(); list(); rotateTo([target.center[0] > 0 ? -40 : 60, 20], 1);
-  },
-
-  /* ---------------- THE SPOT (NSW suburbs) ---------------- */
-  nsw(){
-    const feats = NSWSUB.features;
-    const norm = s => s.toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g,'');
-    feats.forEach(f => { f.name = f.properties.n; f.center = f.properties.c; f.bb = f.properties.b; f.pts = null; });
-    const byName = {}; feats.forEach(f => byName[norm(f.name)] = f);
-    // plain names also work: "Newtown" finds the Sydney one, and any other suburb whose name is unique
-    feats.forEach(f => { const plain = norm(f.name.replace(/ \(.*\)$/,'')); if (!byName[plain]) byName[plain] = f; });
-    const names = feats.map(f => f.name);
-    const target = byName[norm(CONFIG.nsw.answer)];
-    if (!target){ $('#sMsg').textContent = 'Config problem: unknown suburb "' + CONFIG.nsw.answer + '"'; return; }
-    const CBD = [151.2093,-33.8688];
-    const metro = feats.filter(f => f.properties.d < 45);
-    const rad = d => d*Math.PI/180;
-    const points = f => f.pts || (f.pts = (function(){ const out = []; (function walk(c){ if (typeof c[0] === 'number') out.push(c); else c.forEach(walk); })(f.geometry.coordinates);
-      if (out.length > 400){ const st = out.length/400, o2 = []; for (let i = 0; i < out.length; i += st) o2.push(out[Math.floor(i)]); return o2; } return out; })());
-    function borderDist(a,b){ if (a === b) return 0; const A = points(a), B = points(b); let m = Infinity;
-      for (let i = 0; i < A.length; i++) for (let j = 0; j < B.length; j++){ const d = d3.geoDistance(A[i],B[j]); if (d < m) m = d; } return m*6371; }
-    function arrow(a,b){ const [l1,p1] = a.center.map(rad), [l2,p2] = b.center.map(rad);
-      const y = Math.sin(l2-l1)*Math.cos(p2), x = Math.cos(p1)*Math.sin(p2) - Math.sin(p1)*Math.cos(p2)*Math.cos(l2-l1);
-      return ['↑','↗','→','↘','↓','↙','←','↖'][Math.round(((Math.atan2(y,x)*180/Math.PI + 360) % 360)/45) % 8]; }
-    const heat = d => d3.interpolateYlOrRd(0.12 + 0.88*(1 - Math.sqrt(Math.min(d,300)/300)));
-    const GREEN = '#4f9d69';
-    const guesses = []; let done = false, miles = false, hintN = 0; const colors = new Map();
-
-    const cv = $('#sMap'), ctx = cv.getContext('2d');
-    const proj = d3.geoMercator(), path = d3.geoPath(proj, ctx);
-    let S = 0, dpr = 1, base = 1, baseCenter = [151.05,-33.85], anim = 0, view = {c:[151.05,-33.85], k:1};
-    function apply(){ proj.scale(base*view.k).center(view.c).translate([S/2,S/2]); }
-    function size(){ dpr = window.devicePixelRatio || 1;
-      const maxH = innerHeight - 56 - (document.body.classList.contains('dev') ? 44 : 0) - (innerWidth >= 900 ? 170 : 270);
-      S = Math.max(240, Math.min($('#sWrap').clientWidth, 540, maxH)); cv.width = S*dpr; cv.height = S*dpr; cv.style.width = cv.style.height = S+'px';
-      proj.fitExtent([[8,8],[S-8,S-8]], {type:'FeatureCollection', features:metro}); base = proj.scale(); baseCenter = proj.invert([S/2,S/2]); if (!view.set){ view.c = baseCenter; view.set = true; } draw(); }
-    let queued = 0; const redraw = () => { if (!queued) queued = requestAnimationFrame(() => { queued = 0; draw(); }); };
-    function draw(){
-      ctx.setTransform(dpr,0,0,dpr,0,0); apply();
-      ctx.fillStyle = '#bfe0f2'; ctx.fillRect(0,0,S,S);
-      const a = proj.invert([0,0]), b = proj.invert([S,S]), x0 = Math.min(a[0],b[0]), x1 = Math.max(a[0],b[0]), y0 = Math.min(a[1],b[1]), y1 = Math.max(a[1],b[1]);
-      const show = f => !(f.bb[2] < x0 || f.bb[0] > x1 || f.bb[3] < y0 || f.bb[1] > y1);
-      const stroke = view.k > .4; ctx.lineJoin = 'round'; ctx.lineWidth = .5; ctx.strokeStyle = 'rgba(110,110,110,.45)'; ctx.fillStyle = '#e9e7e1';
-      ctx.beginPath(); feats.forEach(f => { if (!colors.has(f) && show(f)) path(f); }); ctx.fill(); if (stroke) ctx.stroke();
-      colors.forEach((col, f) => { if (!show(f)) return; ctx.beginPath(); path(f); ctx.fillStyle = col; ctx.fill(); ctx.lineWidth = 1.6; ctx.strokeStyle = '#222'; ctx.stroke(); });
-      ctx.font = '700 12px Helvetica,Arial'; ctx.textAlign = 'center'; ctx.lineJoin = 'round'; ctx.lineWidth = 3;
-      colors.forEach((_, f) => { const p = proj(f.center); if (p[0] < -40 || p[1] < -10 || p[0] > S+40 || p[1] > S+10) return; const label = f.name.replace(/ \(.*\)$/,'');
-        ctx.strokeStyle = 'rgba(255,255,255,.92)'; ctx.strokeText(label, p[0], p[1] + 4); ctx.fillStyle = '#111'; ctx.fillText(label, p[0], p[1] + 4); });
-      ctx.strokeStyle = '#6b97b8'; ctx.lineWidth = 2; ctx.strokeRect(1,1,S-2,S-2);
-    }
-    function fitK(f){ const w = base*rad(f.bb[2]-f.bb[0]), h = base*rad(f.bb[3]-f.bb[1])/Math.cos(rad(f.center[1])); return .6*S/Math.max(w,h,1e-6); }
-    function flyTo(c, k){ cancelAnimationFrame(anim);
-      const c0 = view.c.slice(), k0 = view.k, t0 = performance.now(), T = 700, kk = k || k0;
-      (function step(now){ const t = Math.min(1,(now-t0)/T), e = t < .5 ? 2*t*t : 1 - Math.pow(-2*t+2,2)/2;
-        view.c = [c0[0] + (c[0]-c0[0])*e, c0[1] + (c[1]-c0[1])*e]; view.k = k0 + (kk-k0)*e; draw(); if (t < 1) anim = requestAnimationFrame(step); })(t0); }
-    function zoomAt(k, x, y){ k = Math.max(.12, Math.min(80, k)); apply(); const g = proj.invert([x,y]); view.k = k; apply();
-      const p = proj(g); view.c = proj.invert([S/2 - (x - p[0]), S/2 - (y - p[1])]); redraw(); }
-    const ptrs = new Map(); let pinch = 0; cv.style.touchAction = 'none'; cv.style.cursor = 'grab';
-    const pos = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-    cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, {x:e.clientX, y:e.clientY}); cancelAnimationFrame(anim); pinch = 0; });
-    cv.addEventListener('pointermove', e => { const p = ptrs.get(e.pointerId); if (!p) return;
-      if (ptrs.size === 2){ p.x = e.clientX; p.y = e.clientY; const [a,b] = [...ptrs.values()], d = Math.hypot(a.x-b.x,a.y-b.y), r = cv.getBoundingClientRect();
-        if (pinch) zoomAt(view.k*d/pinch, (a.x+b.x)/2 - r.left, (a.y+b.y)/2 - r.top); pinch = d; return; }
-      apply(); view.c = proj.invert([S/2 - (e.clientX - p.x), S/2 - (e.clientY - p.y)]); p.x = e.clientX; p.y = e.clientY; redraw(); });
-    const up = e => { ptrs.delete(e.pointerId); pinch = 0; };
-    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
-    cv.addEventListener('wheel', e => { e.preventDefault(); const [x,y] = pos(e); zoomAt(view.k*Math.exp(-e.deltaY*.0015), x, y); }, {passive:false});
-    $('#sZin').onclick = () => flyTo(view.c, Math.min(80, view.k*1.7));
-    $('#sZout').onclick = () => flyTo(view.c, Math.max(.12, view.k/1.7));
-    $('#sReset').onclick = () => flyTo(baseCenter, 1);
-    window.addEventListener('resize', size);
-
-    const inp = $('#sIn'), sug = $('#sSug');
-    const fmt = d => miles ? (d*0.621371).toFixed(d < 10 ? 1 : 0) + ' mi' : d.toFixed(d < 10 ? 1 : 0) + ' km';
-    function suggest(){ const q = norm(inp.value); sug.innerHTML = ''; if (!q){ sug.style.display = 'none'; return; }
-      const m = names.filter(n => norm(n).startsWith(q)).concat(names.filter(n => !norm(n).startsWith(q) && norm(n).includes(q))).slice(0,7);
-      m.forEach(n => { const o = el('div','',n); o.onmousedown = ev => { ev.preventDefault(); inp.value = n; guess(); }; sug.append(o); });
-      sug.style.display = m.length ? 'block' : 'none'; }
-    function list(){ const box = $('#sGuesses'); box.innerHTML = ''; $('#sCount').textContent = guesses.length ? `${guesses.length} guess${guesses.length > 1 ? 'es' : ''}` : 'No guesses yet';
-      const last = guesses[guesses.length-1];
-      [...guesses].sort((a,b) => a.d - b.d).forEach(g => { const it = el('div','gitem' + (g === last ? ' last' : '')); it.style.background = g.f === target ? GREEN : heat(g.d); if (g.f === target) it.style.color = '#fff';
-        it.append(el('span','',g.f.name), el('span','', g.f === target ? '🎉' : (g.d < .5 ? 'next door ' : fmt(g.d) + ' ') + arrow(g.f,target))); box.append(it); }); }
-    function finish(text){ done = true; colors.set(target, GREEN); guesses.some(g => g.f === target) || guesses.push({f:target, d:0});
-      flyTo(target.center, Math.min(40, Math.max(.15, fitK(target)*.8))); list(); inp.disabled = true; $('#sBtn').disabled = true; sug.style.display = 'none'; win('s', text, 'quiz'); }
-    function guess(){ if (done) return;
-      const f = byName[norm(inp.value)] || (sug.firstChild && byName[norm(sug.firstChild.textContent)]);
-      if (!f) return flash('#sMsg', "I don't know that suburb. Pick one from the list.");
-      if (guesses.some(g => g.f === f)){ inp.value = ''; sug.style.display = 'none'; return flash('#sMsg', 'Already guessed ' + f.name); }
-      const d = borderDist(f, target); guesses.push({f, d}); inp.value = ''; sug.style.display = 'none';
-      colors.set(f, f === target ? GREEN : heat(d)); flyTo(f.center, Math.min(6, Math.max(.15, fitK(f)*.4))); list();
-      if (f === target) finish(CONFIG.nsw.winText);
-      else flash('#sMsg', d < .5 ? `${f.name} is right next door!` : `${f.name} is ${fmt(d)} away`, 3000); }
-    $('#sBtn').onclick = guess; inp.addEventListener('input', suggest); inp.addEventListener('blur', () => setTimeout(() => sug.style.display = 'none', 150));
-    inp.addEventListener('keydown', e => { if (e.key === 'Enter') guess(); });
-    $('#sUnits').onclick = e => { miles = !miles; e.target.textContent = miles ? 'Showing miles' : 'Showing km'; list(); };
-    $('#sHint').onclick = () => { if (done) return; const dist = target.properties.d, w = target.properties.w;
-      const hints = [ dist < 45 ? `Hint: it's in Greater Sydney.` : `Hint: it's outside Sydney, about ${Math.round(dist/10)*10} km away.`,
-        dist < 3 ? `Hint: it's right in the CBD.` : `Hint: it's about ${Math.round(dist)} km ${w} of the CBD.`, `Hint: its name starts with "${target.name[0]}".` ];
-      flash('#sMsg', hints[Math.min(hintN, hints.length-1)], 0); hintN++; $('#sHint').textContent = hintN >= hints.length ? 'Hint' : `Hint (${hintN}/${hints.length})`; };
-    $('#sGive').onclick = () => { if (!done && sure($('#sGive'))) finish(`It was ${target.name.replace(/ \(.*\)$/,'')}. No worries, onwards!`); };
-    size(); list();
-  },
-
-  /* ---------------- QUIZ ---------------- */
-  quiz(){
-    const Q = CONFIG.quiz.questions; let i = 0, tries = 0, hinted = false, solved = false;
-    const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
-    function lev(a,b){ const m = [...Array(a.length+1)].map((_,x) => [x]); for (let y = 1; y <= b.length; y++) m[0][y] = y;
-      for (let x = 1; x <= a.length; x++) for (let y = 1; y <= b.length; y++) m[x][y] = Math.min(m[x-1][y]+1, m[x][y-1]+1, m[x-1][y-1] + (a[x-1] === b[y-1] ? 0 : 1)); return m[a.length][b.length]; }
-    function ok(input, q){ const n = norm(input); if (!n) return false; const flat = n.replace(/ /g,''), toks = n.split(' ');
-      return q.accept.some(group => group.every(k => { k = norm(k).replace(/ /g,''); return flat.includes(k) || (k.length >= 5 && toks.some(t => lev(t,k) <= 1)); })); }
-    const inp = $('#zIn');
-    function render(){
-      const q = Q[i]; solved = false; tries = 0; hinted = false;
-      $('#zNum').textContent = `Question ${i+1} of ${Q.length}`; $('#zText').textContent = q.q;
-      document.querySelectorAll('#zDots i').forEach((d,k) => d.className = k < i ? 'done' : k === i ? 'now' : '');
-      inp.value = ''; inp.disabled = false; inp.placeholder = q.placeholder || 'Type your answer…'; $('#zBtn').disabled = false;
-      $('#zMsg').textContent = ''; $('#zAns').classList.remove('on'); $('#zGive').style.display = 'none'; $('#zHint').textContent = 'Hint'; $('#zTries').textContent = '';
-      $('#zRow').style.display = 'flex'; $('#zBar').style.display = 'flex'; setTimeout(() => inp.focus(), 50);
-    }
-    function reveal(correct){
-      const q = Q[i]; solved = true; inp.disabled = true; $('#zBtn').disabled = true; $('#zMsg').textContent = '';
-      $('#zRow').style.display = 'none'; $('#zBar').style.display = 'none';
-      const a = $('#zAns'); a.classList.add('on'); a.classList.toggle('miss', !correct);
-      a.querySelector('small').textContent = correct ? 'Correct!' : 'The answer was…';
-      a.querySelector('b').textContent = q.display; a.querySelector('span').textContent = (correct ? q.win : q.lose) || q.win || '';
-      const nx = $('#zNext'); nx.textContent = i < Q.length-1 ? 'Next question →' : 'Finish →';
-      nx.onclick = () => { if (i < Q.length-1){ i++; render(); } else { activeKey = null; document.querySelectorAll('#zDots i').forEach(d => d.className = 'done'); $('#zCard').style.display = 'none'; win('z', CONFIG.quiz.winText, 'finale'); } };
-    }
-    function guess(){
-      if (solved) return; const v = inp.value;
-      if (!v.trim()) return;
-      if (ok(v, Q[i])) return reveal(true);
-      tries++; inp.value = '';
-      const rx = (Q[i].reactions || []).find(r => ok(v, {accept:[r[0]]}));
-      flash('#zMsg', rx ? rx[1] : ['Not quite. Try again!','Hmm, nope. Think harder 😉','Close? Not really. Keep going!'][(tries-1) % 3], 2600);
-      $('#zTries').textContent = `${tries} wrong guess${tries > 1 ? 'es' : ''}`;
-      if (tries >= 3) $('#zGive').style.display = '';
-    }
-    $('#zBtn').onclick = guess; inp.addEventListener('keydown', e => { if (e.key === 'Enter') guess(); });
-    $('#zHint').onclick = () => { const q = Q[i]; flash('#zMsg', q.hint || `Hint: it starts with "${q.display[0]}".`, 0); };
-    $('#zGive').onclick = () => reveal(false);
-    render();
-  },
-
-  /* ---------------- FINALE ---------------- */
+  /* ---------------- THE QUESTION ---------------- */
   finale(){
-    const F = CONFIG.finale, vid = $('#vid');
-    $('#lead').textContent = F.lead;
-    let revealed = false;
-    function reveal(){
-      if (revealed) return; revealed = true;
-      vid.pause(); vid.style.display = 'none'; $('#vidSkip').style.display = 'none'; $('#pre').style.display = 'none';
-      const q = $('#question'), board = $('#qBoard'); q.style.display = 'flex';
-      const ws = F.question.toUpperCase().split(/\s+/); board.style.setProperty('--n', Math.max(...ws.map(w => w.length)));
-      let t = 300;
-      ws.forEach(w => { const tr = el('div','trow'); [...w].forEach(ch => { const tile = el('div','tile'); tr.append(tile);
-        setTimeout(() => { tile.classList.add('flip'); setTimeout(() => { tile.textContent = ch; tile.classList.add('correct'); }, 250); }, t); t += 230; }); board.append(tr); t += 250; });
-      setTimeout(() => { $('#yesrow').style.display = 'flex'; }, t + 500);
-      $('#yesrow').querySelectorAll('button').forEach(b => b.onclick = () => { $('#yesrow').style.display = 'none'; const m = $('#yesmsg'); m.textContent = F.yesText; m.style.display = 'block'; confetti(); });
-    }
-    $('#playBtn').onclick = () => {
-      $('#pre').style.display = 'none'; vid.style.display = 'block';
-      vid.onended = reveal; vid.onerror = reveal;
-      vid.src = F.video; vid.play().catch(() => {});
-      setTimeout(() => { if (!revealed) $('#vidSkip').style.display = 'block'; }, 4000);
-    };
-    $('#vidSkip').onclick = reveal;
+    const F = CONFIG.finale, board = $('#qBoard');
+    document.body.classList.add('night'); startSky();
+    $('#lead').textContent = F.lead; setTimeout(() => $('#lead').classList.add('on'), 900);
+    board.style.setProperty('--n', Math.max(...F.lines.map(l => l.length))); board.style.setProperty('--rows', F.lines.length);
+    let t = 2200;
+    F.lines.forEach(line => { const tr = el('div','trow');
+      [...line.toUpperCase()].forEach(ch => { const tile = el('div', ch === ' ' ? 'tile gap' : 'tile'); tr.append(tile);
+        if (ch !== ' '){ setTimeout(() => { tile.classList.add('flip'); setTimeout(() => { tile.textContent = ch; tile.classList.add('correct'); }, 250); }, t); t += 200; } });
+      board.append(tr); t += 200; });
+    setTimeout(() => rain(F.hearts, {loop:true, count:34}), 1500);
+    setTimeout(() => { $('#yesrow').style.display = 'flex'; }, t + 600);
+    $('#yesrow').querySelectorAll('button').forEach(b => b.onclick = () => {
+      $('#yesrow').style.display = 'none'; const m = $('#yesmsg'); m.textContent = F.yesText; m.style.display = 'block'; rain(F.hearts, {loop:true, count:110}); });
   }
 };
 
-function confetti(){
-  const cv = $('#confetti'), ctx = cv.getContext('2d'); cv.width = innerWidth; cv.height = innerHeight;
-  const cols = ['#6aaa64','#c9b458','#e91e63','#ff8a80','#64b5f6','#ffd54f'];
-  const P = Array.from({length:220}, () => ({x:Math.random()*cv.width, y:-Math.random()*cv.height, s:5+Math.random()*8, vy:2+Math.random()*4, vx:-1+Math.random()*2, r:Math.random()*6, vr:-.2+Math.random()*.4, c:cols[Math.random()*cols.length|0]}));
-  (function loop(){ ctx.clearRect(0,0,cv.width,cv.height);
-    P.forEach(p => { p.y += p.vy; p.x += p.vx; p.r += p.vr; if (p.y > cv.height + 20){ p.y = -20; p.x = Math.random()*cv.width; }
-      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.r); ctx.fillStyle = p.c; ctx.fillRect(-p.s/2,-p.s/3,p.s,p.s*.66); ctx.restore(); });
-    requestAnimationFrame(loop); })();
-}
-
-
-// For your own testing: add ?stage=crossword (or globle / finale) to the address to jump ahead.
+// For your own testing: add ?stage=finale to the address to jump straight to the question.
 const jump = new URLSearchParams(location.search).get('stage');
-if (CONFIG.dev){
-  const bar = el('div'); bar.id = 'devbar'; bar.append(el('span','','DEV'));
-  ORDER.forEach(s => { const b = el('button','',s); b.dataset.s = s; b.onclick = () => show(s); bar.append(b); });
-  document.body.append(bar); document.body.classList.add('dev');
-}
+if (jump === 'finale') startMusic();
 show(ORDER.includes(jump) ? jump : 'intro');
 </script>
 </body>
