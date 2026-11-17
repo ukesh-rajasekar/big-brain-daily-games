@@ -11,6 +11,7 @@
    ============================================================ */
 const CONFIG = {
   dev: true,                         // true = shows a bar to jump between games. SET TO false BEFORE SENDING IT TO HER
+  rainEmoji: "🫦",                   // falls like confetti after every round
   herName: "",                      // e.g. "Priya" (leave "" to skip the name)
 
   wordle: {
@@ -207,6 +208,7 @@ const CONFIG = {
   #question{display:none;flex-direction:column;align-items:center;gap:16px}
   #yesrow{display:none;gap:12px;flex-wrap:wrap;justify-content:center}
   #yesmsg{font:700 clamp(26px,7vw,40px) Georgia,serif;text-align:center;display:none}
+  #rain{position:fixed;inset:0;pointer-events:none;width:100%;height:100%;z-index:46}
   #confetti{position:fixed;inset:0;pointer-events:none;width:100%;height:100%;z-index:45}
   .tiny{font-size:13px;color:#888;background:none;border:0;text-decoration:underline;cursor:pointer;padding:8px}
 
@@ -322,6 +324,7 @@ const CONFIG = {
   </section>
 </main>
 <canvas id="confetti"></canvas>
+<canvas id="rain"></canvas>
 
 <script>
 const $ = s => document.querySelector(s);
@@ -350,7 +353,19 @@ function win(prefix, text, next){
   activeKey = null;
   const w = $('#'+prefix+'Win'); w.querySelector('b').textContent = text;
   w.querySelector('button').onclick = () => { w.classList.remove('on'); show(ORDER[ORDER.indexOf(document.querySelector('.screen.on').id) + 1]); };
-  setTimeout(() => w.classList.add('on'), 1100);
+  setTimeout(() => { w.classList.add('on'); rain(CONFIG.rainEmoji || '🫦'); }, 1100);
+}
+let rainId = 0;
+function rain(ch){
+  const cv = $('#rain'), ctx = cv.getContext('2d'), dpr = window.devicePixelRatio || 1, W = innerWidth, H = innerHeight;
+  cv.width = W*dpr; cv.height = H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); cancelAnimationFrame(rainId);
+  const P = Array.from({length: 48}, () => ({x:Math.random()*W, y:-30 - Math.random()*H*.9, s:26 + Math.random()*30, vy:2.6 + Math.random()*3.6, vx:-.6 + Math.random()*1.2, r:Math.random()*6.28, vr:-.04 + Math.random()*.08}));
+  (function loop(){
+    ctx.clearRect(0,0,W,H); let alive = 0;
+    P.forEach(p => { p.y += p.vy; p.x += p.vx; p.r += p.vr; if (p.y < H + 50) alive++;
+      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.r); ctx.font = p.s + 'px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(ch,0,0); ctx.restore(); });
+    if (alive) rainId = requestAnimationFrame(loop); else ctx.clearRect(0,0,W,H);
+  })();
 }
 function flash(id, text, ms=1800){ const m = $(id); m.textContent = text; clearTimeout(m._t); if (ms) m._t = setTimeout(() => m.textContent = '', ms); }
 
