@@ -86,9 +86,12 @@ const CONFIG = {
   #lead{opacity:0;transition:opacity 1.5s;color:#dfe8ff;font-size:clamp(16px,4.4vw,20px)}
   #lead.on{opacity:1}
   #rain{position:fixed;inset:0;pointer-events:none;width:100%;height:100%;z-index:46}
-  #sky{position:fixed;inset:0;width:100%;height:100%;z-index:0;opacity:0;pointer-events:none;transition:opacity 2.4s ease}
+  #sky,#skyfg{position:fixed;inset:0;width:100%;height:100%;z-index:0;opacity:0;pointer-events:none;transition:opacity 2.4s ease}
+  #skyfg{z-index:1}
   body.night{background:#050a1c;color:#fff}
-  body.night #sky{opacity:1}
+  body.night #sky,body.night #skyfg{opacity:1}
+  #question{position:relative}
+  #question::before{content:'';position:absolute;inset:-48px -36px;background:radial-gradient(ellipse at center,rgba(3,8,30,.6),rgba(3,8,30,0) 72%);z-index:-1;pointer-events:none}
   body.night header{background:transparent;border-color:transparent}
   body.night header h1{opacity:0}
   body.night .tile.correct{background:#f0c14b;border-color:#f0c14b;color:#1a1f4a}
@@ -102,11 +105,12 @@ const CONFIG = {
   <button class="chip" id="musicBtn" hidden>♪ On</button>
 </header>
 <canvas id="sky"></canvas>
+<canvas id="skyfg"></canvas>
 <main>
   <section class="screen mid" id="intro">
     <div class="board nametiles" id="nameTiles"></div>
     <h2 id="hello">A little game for you</h2>
-    <p class="sub">Guess the hidden word in six tries. Turn your sound on. 🔊</p>
+    <p class="sub">Guess the hidden word in six tries.</p>
     <button class="btn" id="startBtn">Play</button>
   </section>
 
@@ -148,7 +152,7 @@ function show(name){
 function win(prefix, text){
   activeKey = null;
   const w = $('#'+prefix+'Win'); w.querySelector('b').textContent = text;
-  w.querySelector('button').onclick = () => { w.classList.remove('on'); rain.stop && rain.stop(); show(ORDER[ORDER.indexOf(document.querySelector('.screen.on').id) + 1]); };
+  w.querySelector('button').onclick = () => { w.classList.remove('on'); rain.stop && rain.stop(); startMusic(); show(ORDER[ORDER.indexOf(document.querySelector('.screen.on').id) + 1]); };
   setTimeout(() => { w.classList.add('on'); rain(CONFIG.rainEmoji || '🫦'); }, 1100);
 }
 function flash(id, text, ms=1800){ const m = $(id); m.textContent = text; clearTimeout(m._t); if (ms) m._t = setTimeout(() => m.textContent = '', ms); }
@@ -192,42 +196,100 @@ $('#musicBtn').onclick = () => { if (!music.ready) return; if (music.on){ music.
 // some phones only allow sound from a direct tap, so any tap nudges it to play
 document.addEventListener('pointerdown', () => { if (music.ready && music.want && !music.on) music.player.playVideo(); });
 
-/* ---------- live starry night ---------- */
+/* ---------- live painted starry night ----------
+   Thousands of brush strokes ride a swirling flow field (big spiral currents, like oil paint in motion),
+   with haloed stars, a crescent moon, a cypress tree and a village with lit windows on top. */
+let skyRun = 0;
 function startSky(){
-  const cv = $('#sky'), ctx = cv.getContext('2d'), still = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let W, H, m, dpr, stars, bigStars, last = 0, t = 0, shoot = null, nextShoot = 3;
-  function size(){ dpr = Math.min(window.devicePixelRatio || 1, 1.5); W = innerWidth; H = innerHeight; m = Math.min(W,H); cv.width = W*dpr; cv.height = H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
-    stars = Array.from({length: Math.round(W*H/8000)}, () => ({x:Math.random()*W, y:Math.random()*H*.86, r:.5 + Math.random()*1.5, p:Math.random()*6.28, s:.8 + Math.random()*2.2}));
-    bigStars = [[.14,.17],[.31,.09],[.52,.2],[.7,.11],[.88,.31],[.4,.34],[.09,.42],[.64,.42],[.93,.1],[.24,.3],[.5,.07]].map(([a,b]) => ({x:a*W, y:b*H, r:m*(.016 + Math.random()*.012), p:Math.random()*6.28})); }
-  function band(i){ const y0 = H*(.1 + i*.075); ctx.beginPath();
-    for (let x = -20; x <= W + 20; x += 14){ const y = y0 + Math.sin(x*.006 + t*.35 + i)*H*.04 + Math.sin(x*.017 - t*.5 + i*2)*H*.014; x === -20 ? ctx.moveTo(x,y) : ctx.lineTo(x,y); }
-    ctx.strokeStyle = i % 2 ? 'rgba(120,170,245,.10)' : 'rgba(170,205,255,.09)'; ctx.lineWidth = m*(.022 + (i%3)*.012); ctx.lineCap = 'round'; ctx.stroke(); }
-  function spiral(cx, cy, base, dir){
-    for (let k = 0; k < 10; k++){ const r = base*(.14 + k*.095), a0 = dir*t*.25 + k*.5;
-      ctx.beginPath(); ctx.arc(cx, cy, r, a0, a0 + Math.PI*1.45); ctx.strokeStyle = 'rgba(195,222,255,' + (.15 - k*.008) + ')'; ctx.lineWidth = m*.011; ctx.stroke(); } }
-  function moon(){ const x = W*.85, y = H*.15, r = m*.07, pulse = 1 + Math.sin(t*1.2)*.04;
-    for (let k = 3; k >= 1; k--){ ctx.beginPath(); ctx.arc(x, y, r*(1 + k*.55)*pulse, 0, 7); ctx.fillStyle = 'rgba(255,220,120,' + (.05 + (3-k)*.02) + ')'; ctx.fill(); }
-    ctx.save(); ctx.beginPath(); ctx.rect(0,0,W,H); ctx.arc(x + r*.45, y - r*.15, r*.86, 0, 7, true); ctx.clip(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = '#ffd860'; ctx.fill(); ctx.restore(); }
-  function bigStar(s){ const tw = .75 + .25*Math.sin(t*1.4 + s.p);
-    const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r*3.4); g.addColorStop(0, 'rgba(255,235,140,' + (.75*tw) + ')'); g.addColorStop(1, 'rgba(255,235,140,0)');
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(s.x, s.y, s.r*3.4, 0, 7); ctx.fill();
-    for (let k = 1; k <= 3; k++){ ctx.beginPath(); ctx.arc(s.x, s.y, s.r*(.9 + k*.55), 0, 7); ctx.strokeStyle = 'rgba(255,230,140,' + (.22*tw/k) + ')'; ctx.lineWidth = 1.4; ctx.stroke(); }
-    ctx.beginPath(); ctx.arc(s.x, s.y, s.r*.55, 0, 7); ctx.fillStyle = '#fff3b8'; ctx.fill(); }
+  const run = ++skyRun, paint = $('#sky'), fgc = $('#skyfg'), pc = paint.getContext('2d'), fc = fgc.getContext('2d');
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches, rnd = (a,b) => a + Math.random()*(b-a);
+  let W, H, m, hz, t = 0, last = 0, parts, vort, fgImg, wins, bigStars, smallStars, baseGrad, fdpr;
+  const ALL = ['#0a1a55','#0f2870','#16388a','#1c46a0','#2559b8','#3374cc','#4f90dc','#74afe8','#9fcdf0'], LIGHT = ['#d6ecff','#fff2b0','#ffe27a','#ffd24a','#e9f6ff'];
+
+  function setup(){
+    W = innerWidth; H = innerHeight; m = Math.min(W,H); hz = H*.74; fdpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    paint.width = W; paint.height = H; fgc.width = W*fdpr; fgc.height = H*fdpr; fc.setTransform(fdpr,0,0,fdpr,0,0);
+    baseGrad = pc.createLinearGradient(0,0,0,hz*1.05); baseGrad.addColorStop(0,'#081447'); baseGrad.addColorStop(.55,'#173a8f'); baseGrad.addColorStop(1,'#3f7fc8');
+    pc.fillStyle = baseGrad; pc.fillRect(0,0,W,H);
+    vort = [ {x:W*.56, y:H*.33, r:m*.21, s:3.4, d:1}, {x:W*.25, y:H*.24, r:m*.13, s:2.6, d:-1}, {x:W*.84, y:H*.5, r:m*.11, s:2, d:1}, {x:W*.4, y:H*.55, r:m*.09, s:1.5, d:-1} ];
+    const n = Math.max(650, Math.min(1500, Math.round(W*H/1700)));
+    parts = Array.from({length:n}, () => spawn({}));
+    bigStars = [[.12,.14],[.3,.09],[.46,.2],[.68,.1],[.9,.3],[.36,.38],[.08,.4],[.74,.43],[.58,.06],[.22,.3],[.82,.2]].map(([a,b]) => ({x:a*W, y:b*H, r:m*rnd(.016,.027), p:rnd(0,6.28), warm:Math.random() < .3}));
+    smallStars = Array.from({length: Math.round(W*H/26000)}, () => ({x:rnd(0,W), y:rnd(0,hz*.9), r:rnd(.8,2.2), p:rnd(0,6.28), s:rnd(.8,2.4)}));
+    buildForeground();
+    for (let i = 0; i < 80; i++) stepParts(1.6);               // pre-paint the sky so it is full from the first frame
+  }
+  function ang(x,y){ let vx = Math.cos(y*.011 + t*.25)*.55 + .4, vy = Math.sin(x*.009 - t*.2)*.35;
+    for (const v of vort){ const dx = x - v.x, dy = y - v.y, d2 = dx*dx + dy*dy + 1, d = Math.sqrt(d2), f = v.s*Math.exp(-d2/(2*v.r*v.r)); vx += -dy/d*f*v.d; vy += dx/d*f*v.d; }
+    return Math.atan2(vy,vx); }
+  function spawn(p){
+    p.x = rnd(-20, W+20); p.y = rnd(-20, hz); p.life = 0; p.max = rnd(60,190); p.w = rnd(2.2,7.5)*(m/760 + .35);
+    let near = 9; for (const v of vort) near = Math.min(near, Math.hypot(p.x - v.x, p.y - v.y)/v.r);
+    const t0 = Math.max(0, Math.min(1, p.y/hz));
+    if (near < .75 && Math.random() < .45) p.col = LIGHT[Math.random()*LIGHT.length|0];
+    else if (Math.random() < .035) p.col = LIGHT[Math.random()*LIGHT.length|0];
+    else p.col = ALL[Math.min(ALL.length-1, Math.floor((t0*.62 + Math.random()*.5)*ALL.length))];
+    p.a = rnd(.45,.9); return p; }
+  function stepParts(speed){
+    const sp = speed*(m/760 + .4);
+    for (let i = 0; i < parts.length; i++){ const p = parts[i], a = ang(p.x,p.y), nx = p.x + Math.cos(a)*sp*2, ny = p.y + Math.sin(a)*sp*2;
+      pc.globalAlpha = p.a; pc.strokeStyle = p.col; pc.lineWidth = p.w; pc.lineCap = 'round'; pc.beginPath(); pc.moveTo(p.x,p.y); pc.lineTo(nx,ny); pc.stroke();
+      p.x = nx; p.y = ny; if (++p.life > p.max || p.x < -30 || p.x > W + 30 || p.y < -30 || p.y > hz + 10) spawn(p); }
+    pc.globalAlpha = 1; }
+
+  /* ----- foreground: hills, village, cypress (painted once, then blitted) ----- */
+  function hatch(ctx, pts, cols, n, len, w){ for (let i = 0; i < n; i++){ const p = pts[Math.random()*pts.length|0]; ctx.strokeStyle = cols[Math.random()*cols.length|0]; ctx.lineWidth = w*rnd(.6,1.4); ctx.globalAlpha = rnd(.35,.8); ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.quadraticCurveTo(p[0] + rnd(-len,len), p[1] - rnd(0,len), p[0] + rnd(-len,len)*1.5, p[1] + rnd(-len,len)*.5); ctx.stroke(); } ctx.globalAlpha = 1; }
+  function buildForeground(){
+    const off = document.createElement('canvas'); off.width = W*fdpr; off.height = H*fdpr; const c = off.getContext('2d'); c.setTransform(fdpr,0,0,fdpr,0,0); c.lineCap = 'round';
+    const hill = (base, amp, f, ph, fill, cols) => { const pts = []; c.beginPath(); c.moveTo(0,H);
+      for (let x = 0; x <= W + 12; x += 12){ const y = base + Math.sin(x*f + ph)*amp + Math.sin(x*f*2.3 + ph*1.7)*amp*.35; c.lineTo(x,y); pts.push([x, y + rnd(0,(H - y)*.5)]); }
+      c.lineTo(W,H); c.closePath(); c.fillStyle = fill; c.fill(); hatch(c, pts, cols, Math.round(W*H/900), m*.03, m*.007); };
+    hill(hz + m*.01, m*.05, .006, 1, '#183a86', ['#1f4aa3','#12306e','#2a5cb8','#0f2a64']);
+    hill(hz + m*.09, m*.045, .008, 3, '#0f2a66', ['#16398a','#0a1f52','#1c47a0']);
+    // village
+    wins = []; const vy = H*.9, houses = Math.round(W/(m*.06));
+    c.fillStyle = '#0a1233'; c.fillRect(0, vy, W, H - vy);
+    for (let i = 0; i < houses; i++){ const x = (i + rnd(.1,.8))*W/houses, w = m*rnd(.04,.075), h = m*rnd(.03,.06);
+      c.fillStyle = ['#0c1a45','#0a1538','#101f50'][i%3]; c.fillRect(x, vy - h, w, h + 4);
+      c.beginPath(); c.moveTo(x - 3, vy - h); c.lineTo(x + w/2, vy - h - m*.025); c.lineTo(x + w + 3, vy - h); c.closePath(); c.fillStyle = '#081030'; c.fill();
+      if (Math.random() < .8) wins.push({x:x + w*rnd(.2,.55), y:vy - h*rnd(.7,.35), s:m*.012, p:rnd(0,6.28)}); }
+    const cx = W*.64; c.fillStyle = '#0a1436'; c.fillRect(cx - m*.017, vy - m*.1, m*.034, m*.1 + 4);
+    c.beginPath(); c.moveTo(cx - m*.022, vy - m*.1); c.lineTo(cx, vy - m*.22); c.lineTo(cx + m*.022, vy - m*.1); c.closePath(); c.fill();
+    // cypress
+    const tx = W*.15, th = H*.62, tw = Math.max(m*.1, 56), top = H - th, pts = [];
+    c.beginPath(); c.moveTo(tx - tw*.4, H);
+    for (let k = 0; k <= 24; k++){ const u = k/24, y = H - u*th, wob = Math.sin(u*9 + 1)*tw*.16*u, wd = tw*(.5*Math.sin(Math.PI*Math.pow(u,.62)) + .05); c.lineTo(tx - wd + wob, y); pts.push([tx + rnd(-wd,wd)*.8 + wob, y]); }
+    for (let k = 24; k >= 0; k--){ const u = k/24, y = H - u*th, wob = Math.sin(u*9 + 1)*tw*.16*u, wd = tw*(.5*Math.sin(Math.PI*Math.pow(u,.62)) + .05); c.lineTo(tx + wd + wob, y); pts.push([tx + rnd(-wd,wd)*.8 + wob, y]); }
+    c.closePath(); c.fillStyle = '#06110d'; c.fill(); hatch(c, pts, ['#0e2a1c','#173d29','#050c09','#27533a','#0b1e15'], Math.round(th*tw/90), tw*.5, m*.006);
+    fgImg = off;
+  }
+
+  function drawStars(){
+    smallStars.forEach(s => { const a = .35 + .65*Math.max(0, Math.sin(t*s.s + s.p)); fc.fillStyle = 'rgba(255,246,210,' + a + ')'; fc.beginPath(); fc.arc(s.x, s.y, s.r, 0, 7); fc.fill(); });
+    bigStars.forEach(s => { const tw = .8 + .2*Math.sin(t*1.5 + s.p), core = s.warm ? '255,230,120' : '255,250,225';
+      const g = fc.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r*3.8); g.addColorStop(0, 'rgba(' + core + ',' + (.85*tw) + ')'); g.addColorStop(.4, 'rgba(255,226,110,' + (.28*tw) + ')'); g.addColorStop(1, 'rgba(255,226,110,0)');
+      fc.fillStyle = g; fc.beginPath(); fc.arc(s.x, s.y, s.r*3.8, 0, 7); fc.fill();
+      for (let k = 1; k <= 3; k++){ fc.beginPath(); fc.arc(s.x, s.y, s.r*(1 + k*.7 + .12*Math.sin(t*1.2 + k + s.p)), 0, 7); fc.strokeStyle = 'rgba(255,238,160,' + (.34*tw/k) + ')'; fc.lineWidth = m*.004*(4-k)/2 + .8; fc.stroke(); }
+      fc.beginPath(); fc.arc(s.x, s.y, s.r*.55, 0, 7); fc.fillStyle = 'rgba(' + core + ',1)'; fc.fill(); });
+  }
+  function drawMoon(){ const x = W*.86, y = H*.15, r = m*.062, pulse = 1 + Math.sin(t*1.1)*.04;
+    for (let k = 4; k >= 1; k--){ fc.beginPath(); fc.arc(x, y, r*(1 + k*.5)*pulse, 0, 7); fc.strokeStyle = 'rgba(255,170,60,' + (.16 - k*.025) + ')'; fc.lineWidth = m*.012; fc.stroke(); }
+    const g = fc.createRadialGradient(x, y, r*.8, x, y, r*3); g.addColorStop(0,'rgba(255,200,90,.35)'); g.addColorStop(1,'rgba(255,200,90,0)'); fc.fillStyle = g; fc.beginPath(); fc.arc(x, y, r*3, 0, 7); fc.fill();
+    fc.save(); fc.beginPath(); fc.rect(0,0,W,H); fc.arc(x + r*.62, y - r*.18, r*.9, 0, 7, true); fc.clip(); fc.beginPath(); fc.arc(x, y, r, 0, 7); fc.fillStyle = '#ffcf58'; fc.fill(); fc.restore(); }
+
   function frame(now){
-    const dt = Math.min(.05, (now - last)/1000 || 0); last = now; if (!still) t += dt;
-    const bg = ctx.createLinearGradient(0,0,0,H); bg.addColorStop(0,'#0a1640'); bg.addColorStop(.5,'#1b3d92'); bg.addColorStop(.85,'#12256a'); bg.addColorStop(1,'#080e2c'); ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
-    for (let i = 0; i < 9; i++) band(i);
-    spiral(W*.62, H*.3, m*.2, 1); spiral(W*.27, H*.25, m*.14, -1);
-    stars.forEach(s => { const a = .45 + .55*Math.sin(t*s.s + s.p); ctx.fillStyle = 'rgba(255,246,207,' + Math.max(.1,a) + ')'; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.fill(); });
-    bigStars.forEach(bigStar); moon();
-    if (!shoot && t > nextShoot){ shoot = {x:Math.random()*W*.7, y:Math.random()*H*.3, p:0}; }
-    if (shoot){ shoot.p += dt*1.1; const len = m*.22, x = shoot.x + shoot.p*W*.4, y = shoot.y + shoot.p*H*.18; const g = ctx.createLinearGradient(x, y, x - len, y - len*.45); g.addColorStop(0,'rgba(255,255,255,.9)'); g.addColorStop(1,'rgba(255,255,255,0)');
-      ctx.strokeStyle = g; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x - len, y - len*.45); ctx.stroke(); if (shoot.p > 1){ shoot = null; nextShoot = t + 5 + Math.random()*6; } }
-    ctx.beginPath(); ctx.moveTo(0,H); for (let x = 0; x <= W; x += 16) ctx.lineTo(x, H*.91 + Math.sin(x*.004)*H*.03 + Math.sin(x*.011 + 1)*H*.014); ctx.lineTo(W,H); ctx.closePath(); ctx.fillStyle = '#04081a'; ctx.fill();
-    for (let i = 0; i < 14; i++){ const x = (i*97 % 100)/100*W, y = H*.955 + ((i*37)%5)*H*.006; ctx.fillStyle = 'rgba(255,200,90,' + (.5 + .4*Math.sin(t*.8 + i*3)) + ')'; ctx.fillRect(x, y, 3, 3); }
+    if (run !== skyRun) return;
+    if (now - last < 30){ requestAnimationFrame(frame); return; }
+    const dt = Math.min(.08, (now - last)/1000 || .03); last = now; t += dt;
+    pc.globalAlpha = .07; pc.fillStyle = baseGrad; pc.fillRect(0,0,W,hz*1.05); pc.globalAlpha = 1;   // old strokes slowly dissolve, new ones paint over
+    stepParts(1);
+    fc.clearRect(0,0,W,H); drawStars(); drawMoon();
+    fc.drawImage(fgImg, 0, 0, W, H);
+    wins.forEach(w => { const a = .65 + .3*Math.sin(t*1.3 + w.p); const g = fc.createRadialGradient(w.x, w.y, 0, w.x, w.y, w.s*3); g.addColorStop(0, 'rgba(255,205,90,' + a + ')'); g.addColorStop(1, 'rgba(255,190,70,0)'); fc.fillStyle = g; fc.beginPath(); fc.arc(w.x, w.y, w.s*3, 0, 7); fc.fill(); fc.fillStyle = 'rgba(255,225,130,' + (a + .1) + ')'; fc.fillRect(w.x - w.s*.5, w.y - w.s*.5, w.s, w.s); });
     if (!still) requestAnimationFrame(frame);
   }
-  size(); window.addEventListener('resize', () => { size(); if (still) frame(performance.now()); }); requestAnimationFrame(frame);
+  setup(); requestAnimationFrame(frame);
+  let rs; window.addEventListener('resize', () => { clearTimeout(rs); rs = setTimeout(() => { if (run === skyRun){ setup(); } }, 250); });
 }
 
 function buildKb(box, onKey){
@@ -255,7 +317,7 @@ const INIT = {
     const box = $('#nameTiles'), tr = el('div','trow'); box.style.setProperty('--n', 5); box.style.setProperty('--rows', 1);
     [...(CONFIG.herName || 'HELLO').toUpperCase().slice(0,7)].forEach((ch,i) => { const t = el('div','tile correct', ch); tr.append(t); });
     box.append(tr);
-    $('#startBtn').onclick = () => { startMusic(); show('wordle'); };
+    $('#startBtn').onclick = () => show('wordle');
   },
 
   /* ---------------- WORDLE ---------------- */
@@ -300,7 +362,7 @@ const INIT = {
     document.body.classList.add('night'); startSky();
     $('#lead').textContent = F.lead; setTimeout(() => $('#lead').classList.add('on'), 900);
     board.style.setProperty('--n', Math.max(...F.lines.map(l => l.length))); board.style.setProperty('--rows', F.lines.length);
-    let t = 2200;
+    let t = 1800;
     F.lines.forEach(line => { const tr = el('div','trow');
       [...line.toUpperCase()].forEach(ch => { const tile = el('div', ch === ' ' ? 'tile gap' : 'tile'); tr.append(tile);
         if (ch !== ' '){ setTimeout(() => { tile.classList.add('flip'); setTimeout(() => { tile.textContent = ch; tile.classList.add('correct'); }, 250); }, t); t += 200; } });
@@ -314,7 +376,6 @@ const INIT = {
 
 // For your own testing: add ?stage=finale to the address to jump straight to the question.
 const jump = new URLSearchParams(location.search).get('stage');
-if (jump === 'finale') startMusic();
 show(ORDER.includes(jump) ? jump : 'intro');
 </script>
 </body>
