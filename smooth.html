@@ -1,0 +1,1076 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Today's Puzzle</title>
+<script>
+/* ============================================================
+   EDIT THIS PART — everything personal lives here
+   ============================================================ */
+const CONFIG = {
+  herName: "Rithu",
+  rainEmoji: "🫦",                   // falls like confetti when she solves the word
+
+  wordle: {
+    answer: "HEART",                 // any 4–7 letter word
+    hint: "Hint: it's what you stole from me.",   // shown if she uses all 6 tries
+  },
+
+  finale: {
+    lines: ["RITHU", "NARENDRA", "WILL YOU", "MARRY", "ME?"],   // shown as tiles, one row per line
+    hearts: ["❤️", "💖", "💗", "💕", "💘"],
+    zoomStartMs: 1800,                 // how long the starry night is shown before the camera starts moving in
+    zoomMs: 4200,                      // length of the zoom into the village street
+    letterMs: 140                      // time between flags popping onto the banner (smaller = faster)
+  },
+
+  dog: { caption: "Wow kya ladki hai 😍", sub: "Very handsome girl!" },   // shown with the dog when she solves the word
+
+  music: {
+    dog:      { id: "gotBwcBa4Vo", start: 1 },   // plays while the dog is on screen
+    proposal: { id: "Bcp0Jp_MUYU", start: 0 }    // plays when the question appears
+  }
+};
+</script>
+<style>
+  :root{--green:#4f9d69;--yellow:#e0b44c;--grey:#74777a;--line:#d6d8dc;--ink:#18181a;--hdr:56px;--pad:16px}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html{height:100%;-webkit-text-size-adjust:100%}
+  body{margin:0;min-height:100vh;min-height:100dvh;font-family:"Helvetica Neue",Arial,sans-serif;color:var(--ink);background:#fff;display:flex;flex-direction:column;transition:background .8s,color .8s}
+  @media (max-width:360px){:root{--pad:12px}}
+
+  /* ---------- shell ---------- */
+  header{position:sticky;top:0;z-index:20;height:var(--hdr);background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 var(--pad);flex:none;transition:background .8s,border-color .8s}
+  header h1{font:700 clamp(18px,5vw,24px) Georgia,"Times New Roman",serif;margin:0;letter-spacing:.3px;transition:opacity 1s}
+  main{position:relative;z-index:2;width:100%;max-width:1000px;margin:0 auto;flex:1;padding:var(--pad);padding-bottom:max(var(--pad),env(safe-area-inset-bottom));display:flex;flex-direction:column}
+  .screen{display:none;width:100%;flex:1;flex-direction:column;align-items:center;gap:14px}
+  .screen.on{display:flex}
+  .screen.mid{justify-content:center}
+  h2{font:700 clamp(22px,5vw,28px) Georgia,serif;margin:4px 0 0;text-align:center}
+  p.sub{margin:0;color:#555;text-align:center;line-height:1.45;font-size:clamp(14px,3.8vw,16px);max-width:520px}
+  .btn{background:var(--ink);color:#fff;border:0;border-radius:999px;padding:13px 32px;min-height:48px;font-size:17px;font-weight:700;cursor:pointer}
+  .btn.green{background:var(--green)}
+  .chip{background:transparent;color:inherit;border:1px solid currentColor;border-radius:999px;padding:6px 14px;min-height:34px;font-size:14px;font-weight:700;cursor:pointer}
+  .msg{min-height:22px;font-weight:700;font-size:14px;text-align:center}
+  .msg:not(:empty){background:var(--ink);color:#fff;padding:9px 14px;border-radius:6px}
+  .win{display:none}
+  .win.on{display:flex;position:fixed;inset:0;z-index:40;background:rgba(255,255,255,.96);flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;animation:fade .4s}
+  .win b{font:700 clamp(22px,6vw,30px)/1.25 Georgia,serif;text-align:center;max-width:460px}
+  @keyframes fade{from{opacity:0}}
+
+  /* ---------- tiles ---------- */
+  .board{--rows:6;--chrome:340px;display:grid;gap:5px}
+  #qBoard{--chrome:300px}
+  .trow{display:flex;gap:5px;justify-content:center}
+  .tile{--s:max(34px,min(64px,calc((100vw - 2*var(--pad) - 24px)/var(--n,5)),calc((100dvh - var(--hdr) - var(--chrome))/var(--rows))));width:var(--s);height:var(--s);border:2px solid var(--line);display:grid;place-items:center;font-size:calc(var(--s)*.52);font-weight:700;text-transform:uppercase;user-select:none}
+  .tile.gap{border-color:transparent;width:calc(var(--s)*.45)}
+  .tile.filled{border-color:#878a8c}
+  .tile.pop{animation:pop .1s}
+  .tile.flip{animation:flip .5s ease forwards}
+  .tile.correct{background:var(--green);border-color:var(--green);color:#fff}
+  .tile.present{background:var(--yellow);border-color:var(--yellow);color:#fff}
+  .tile.absent{background:var(--grey);border-color:var(--grey);color:#fff}
+  @keyframes pop{50%{transform:scale(1.1)}}
+  @keyframes flip{0%{transform:rotateX(0)}50%{transform:rotateX(90deg)}100%{transform:rotateX(0)}}
+  .shake{animation:shake .4s}
+  @keyframes shake{20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
+
+  /* ---------- keyboard ---------- */
+  .kb{width:100%;max-width:520px;display:flex;flex-direction:column;gap:6px;margin-top:2px}
+  .kbrow{display:flex;gap:5px;justify-content:center}
+  .key{flex:1;max-width:46px;height:clamp(44px,6.6dvh,58px);border:0;border-radius:6px;background:#d3d6da;font-weight:700;font-size:clamp(12px,3.4vw,15px);cursor:pointer;padding:0;color:var(--ink);touch-action:manipulation}
+  .key.wide{max-width:68px;flex:1.6;font-size:11px}
+  .key:active{filter:brightness(.92)}
+  .key.correct{background:var(--green);color:#fff}.key.present{background:var(--yellow);color:#fff}.key.absent{background:var(--grey);color:#fff}
+
+  /* ---------- proposal ---------- */
+  #question{display:flex;flex-direction:column;align-items:center;gap:18px}
+  #lead{opacity:0;transition:opacity 1.5s;color:#dfe8ff;font-size:clamp(16px,4.4vw,20px)}
+  #lead.on{opacity:1}
+  #rain{position:fixed;inset:0;pointer-events:none;width:100%;height:100%;z-index:46}
+  #sky,#skyfg{position:fixed;inset:0;width:100%;height:100%;z-index:0;opacity:0;pointer-events:none;transition:opacity 1.2s ease}
+  #skyfg{z-index:1;display:none}
+  #skyfg.czoom{display:block}
+  body.night{background:#050a1c;color:#fff}
+  body.skyon #sky,body.skyon #skyfg{opacity:1}
+  /* the WebGL sky moves its camera inside the shader (crisp at every zoom level); only the 2D fallback is zoomed with CSS */
+  .czoom{transform-origin:63% 88%;transition:opacity 1.2s ease,transform 4.2s cubic-bezier(.5,.02,.2,1)}
+  body.zoom .czoom{transform:scale(2.7)}
+  #street{position:fixed;inset:0;width:100%;height:100%;z-index:1;opacity:0;pointer-events:none;transform-origin:63% 100%;will-change:opacity,transform}
+  #question{position:relative}
+  #question::before{content:'';position:absolute;inset:-48px -36px;background:radial-gradient(ellipse at center,rgba(3,8,30,.6),rgba(3,8,30,0) 72%);z-index:-1;pointer-events:none}
+  body.night header{background:transparent;border-color:transparent}
+  body.night header h1{opacity:0}
+  body.night .tile.correct{background:linear-gradient(160deg,#ff6b97,#d81b60);border-color:rgba(255,255,255,.92);color:#fff;text-shadow:0 1px 3px rgba(60,0,25,.45);box-shadow:0 0 0 1px rgba(255,255,255,.3),0 8px 20px rgba(0,0,0,.45),0 0 24px rgba(255,90,140,.55)}
+  #dog{position:fixed;inset:0;z-index:40;background:#000;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:20px;color:#fff;text-align:center}
+  #dog.on{display:flex;animation:fade .4s}
+  .dogbox{position:relative;overflow:hidden;width:min(78vw,calc(56dvh*.6585));aspect-ratio:540/820;animation:dogpop .8s cubic-bezier(.2,1.7,.4,1) both,dogwig 2.6s ease-in-out .9s infinite}
+  .dogbox img{position:absolute;left:0;top:0;width:170.93%;margin-left:-37.04%;margin-top:-109.26%;max-width:none;display:block}
+  .dogcap{opacity:0;animation:dogshow .6s ease .7s forwards}
+  .dogcap b{display:block;font:700 clamp(24px,7vw,38px)/1.2 Georgia,serif}
+  .dogcap span{display:block;margin-top:4px;font-size:clamp(16px,4.6vw,21px);color:#ffd0e2}
+  #dogBtn{opacity:0;animation:dogshow .5s ease 1.8s forwards}
+  @keyframes dogshow{to{opacity:1}}
+  @keyframes dogpop{0%{transform:translateY(55vh) scale(.15) rotate(-14deg);opacity:0}60%{opacity:1}100%{transform:none;opacity:1}}
+  @keyframes dogwig{0%,100%{transform:rotate(-2.5deg)}50%{transform:rotate(2.5deg)}}
+  #ytbox{position:fixed;left:0;bottom:0;width:220px;height:260px;opacity:.01;pointer-events:none;z-index:-1;overflow:hidden}
+  .nametiles .tile{--s:min(58px,calc((100vw - 2*var(--pad) - 24px)/5))}
+</style>
+</head>
+<body>
+<header>
+  <h1>Today's Puzzle</h1>
+  <button class="chip" id="musicBtn" hidden>♪ On</button>
+</header>
+<canvas id="sky"></canvas>
+<canvas id="skyfg"></canvas>
+<canvas id="street"></canvas>
+<main>
+  <section class="screen mid" id="intro">
+    <div class="board nametiles" id="nameTiles"></div>
+    <h2 id="hello">Let's see if you can solve today's Wordle</h2>
+    <button class="btn" id="startBtn">Play</button>
+  </section>
+
+  <section class="screen" id="wordle">
+    <h2>Guess the word</h2>
+    <div class="msg" id="wMsg"></div>
+    <div class="board" id="wBoard"></div>
+    <div class="win" id="wWin"><b></b><button class="btn green">Continue →</button></div>
+    <div class="kb" id="wKb"></div>
+  </section>
+
+  <section class="screen mid" id="finale">
+  </section>
+</main>
+<div id="dog">
+  <div class="dogbox"><img alt="" src="data:image/webp;base64,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"></div>
+  <div class="dogcap"><b id="dogCap"></b><span id="dogSub"></span></div>
+  <button class="btn green" id="dogBtn">Continue →</button>
+</div>
+<canvas id="rain"></canvas>
+<div id="ytbox" aria-hidden="true"><div id="yt_dog"></div><div id="yt_proposal"></div></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+const ORDER = ['intro','wordle','finale'];
+let activeKey = null;
+const started = {};
+const KEYS = {};
+
+function show(name){
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === name));
+  activeKey = null;
+  document.querySelectorAll('.win').forEach(w => w.classList.remove('on'));
+  if (!started[name]) { started[name] = true; INIT[name](); } else if (KEYS[name]) activeKey = KEYS[name];
+  window.scrollTo(0,0);
+}
+function win(prefix, text){
+  activeKey = null;
+  const w = $('#'+prefix+'Win'); w.querySelector('b').textContent = text;
+  w.querySelector('button').onclick = () => { w.classList.remove('on'); rain.stop && rain.stop(); show(ORDER[ORDER.indexOf(document.querySelector('.screen.on').id) + 1]); };
+  setTimeout(() => { w.classList.add('on'); rain(CONFIG.rainEmoji || '🫦'); }, 1100);
+}
+function dogMoment(){           // solved: the dog pops up with a song, and Continue leads to the question
+  activeKey = null; playSong('dog');          // sound starts now, so it is already playing as the dog pops up
+  setTimeout(() => {
+    $('#dogCap').textContent = CONFIG.dog.caption; $('#dogSub').textContent = CONFIG.dog.sub;
+    $('#dog').classList.add('on'); rain(CONFIG.rainEmoji || '🫦');
+    $('#dogBtn').onclick = () => { $('#dog').classList.remove('on'); rain.stop && rain.stop(); playSong('proposal'); show('finale'); };
+  }, 700);
+}
+function flash(id, text, ms=1800){ const m = $(id); m.textContent = text; clearTimeout(m._t); if (ms) m._t = setTimeout(() => m.textContent = '', ms); }
+
+/* ---------- falling emoji ---------- */
+let rainId = 0;
+const SIZES = [24, 32, 40, 50], spriteCache = {};
+const IS_APPLE = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent) || navigator.platform === 'MacIntel';
+function drawLips(x, d){                 // original soft 3D-style lip bite (pink upper lip, salmon lower lip, one white tooth edge), used where there is no Apple emoji font
+  x.save(); x.scale(d/100, d/100);
+  const lg = (y0, y1, stops) => { const q = x.createLinearGradient(0,y0,0,y1); stops.forEach(([o,c]) => q.addColorStop(o,c)); return q; };
+  x.fillStyle = lg(50,83,[[0,'#ffa9b3'],[.55,'#f98593'],[1,'#ee6c82']]);                                         // lower lip
+  x.beginPath(); x.moveTo(5,55); x.quadraticCurveTo(50,49,95,55); x.quadraticCurveTo(85,83,50,83); x.quadraticCurveTo(15,83,5,55); x.fill();
+  x.fillStyle = 'rgba(255,255,255,.24)'; x.beginPath(); x.ellipse(45,70,19,5,0,0,7); x.fill();                  // soft shine on lower lip
+  x.fillStyle = '#16060c'; x.beginPath(); x.moveTo(44,53); x.quadraticCurveTo(76,52,93,56); x.quadraticCurveTo(75,65,47,60); x.closePath(); x.fill();   // dark gap
+  x.fillStyle = lg(50,63,[[0,'#ffffff'],[1,'#d7d7df']]); x.beginPath(); x.moveTo(13,56); x.quadraticCurveTo(40,46,68,53); x.quadraticCurveTo(45,65,27,62); x.quadraticCurveTo(17,60,13,56); x.fill();   // tooth
+  x.fillStyle = lg(30,56,[[0,'#ff90a6'],[.45,'#f35a7e'],[1,'#e3406b']]);                                         // upper lip
+  x.beginPath(); x.moveTo(3,56); x.quadraticCurveTo(9,44,26,38); x.quadraticCurveTo(40,31,47,34); x.quadraticCurveTo(50,36,53,34); x.quadraticCurveTo(60,31,74,38); x.quadraticCurveTo(91,44,97,56);
+  x.quadraticCurveTo(72,50,50,52); x.quadraticCurveTo(28,50,3,56); x.fill();
+  x.fillStyle = 'rgba(255,255,255,.4)'; x.beginPath(); x.ellipse(29,42,10,2.8,-.45,0,7); x.fill(); x.beginPath(); x.ellipse(71,42,10,2.8,.45,0,7); x.fill();   // shine on upper lip
+  x.restore(); }
+function sprite(ch, s, dpr){            // each emoji is drawn once into a tiny canvas, then just stamped every frame (much faster on phones)
+  const key = ch + s + '@' + dpr; if (spriteCache[key]) return spriteCache[key];
+  const d = Math.ceil(s*1.4*dpr), c = document.createElement('canvas'); c.width = c.height = d; const x = c.getContext('2d');
+  if (ch === '🫦' && !IS_APPLE){ x.translate(d*.5 - s*dpr*.5, d*.5 - s*dpr*.56); drawLips(x, s*dpr); return spriteCache[key] = c; }
+  x.font = (s*dpr) + 'px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(ch, d/2, d/2 + s*dpr*.04);
+  return spriteCache[key] = c; }
+function rain(chars, opt){
+  opt = opt || {}; const list = Array.isArray(chars) ? chars : [chars];
+  const cv = $('#rain'), ctx = cv.getContext('2d'), dpr = window.devicePixelRatio || 1, W = innerWidth, H = innerHeight;
+  if (cv.width !== Math.round(W*dpr) || cv.height !== Math.round(H*dpr)){ cv.width = Math.round(W*dpr); cv.height = Math.round(H*dpr); }
+  cancelAnimationFrame(rainId);
+  const mk = fresh => ({ch:list[Math.random()*list.length|0], x:Math.random()*W, y: fresh ? -30 : -30 - Math.random()*H*.9, s:SIZES[Math.random()*SIZES.length|0], vy:2.2 + Math.random()*3.4, vx:-.6 + Math.random()*1.2, r:Math.random()*6.28, vr:-.04 + Math.random()*.08});
+  const P = Array.from({length: opt.count || 48}, () => mk(false));
+  P.forEach(p => sprite(p.ch, p.s, dpr));                                    // draw the emoji sprites now, not mid-animation
+  const clear = () => { ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cv.width,cv.height); };
+  rain.stop = () => { cancelAnimationFrame(rainId); clear(); };
+  let last = 0;
+  (function loop(now){
+    const k = last && now ? Math.min(3, (now - last)/16.67) : 1; last = now || 0;   // time-based: same speed at 30, 60 or 120 fps
+    clear(); let alive = 0;
+    for (let i = 0; i < P.length; i++){ let p = P[i]; p.y += p.vy*k; p.x += p.vx*k; p.r += p.vr*k;
+      if (p.y > H + 50){ if (opt.loop) p = P[i] = mk(true); } else alive++;
+      const sp = sprite(p.ch, p.s, dpr), d = p.s*1.4, c = Math.cos(p.r)*dpr, s = Math.sin(p.r)*dpr;
+      ctx.setTransform(c, s, -s, c, p.x*dpr, p.y*dpr); ctx.drawImage(sp, -d/2, -d/2, d, d); }
+    if (alive || opt.loop) rainId = requestAnimationFrame(loop); else clear();
+  })();
+}
+
+/* ---------- background songs: both hidden YouTube players load on her first tap, so each song starts instantly ---------- */
+const music = {want:false, cur:null, made:false, pl:{}};
+function curPlayer(){ return music.cur && music.pl[music.cur]; }
+function musicLabel(){ const b = $('#musicBtn'), st = curPlayer(); b.hidden = false; b.textContent = st && st.on ? '♪ On' : '♪ Off'; }
+function loadSongs(){
+  if (music.made) return; music.made = true;
+  window.onYouTubeIframeAPIReady = () => {
+    Object.keys(CONFIG.music).forEach(key => {
+      const s = CONFIG.music[key], st = music.pl[key] = {p:null, ready:false, on:false};
+      st.p = new YT.Player('yt_' + key, { width:220, height:124, videoId:s.id, playerVars:{ playsinline:1, controls:0, rel:0, modestbranding:1, start:s.start || 0 },
+        events:{
+          onReady: () => { st.ready = true; if (music.cur === key && music.want) st.p.playVideo(); },
+          onStateChange: e => { st.on = e.data === 1; if (e.data === 0 && music.want && music.cur === key){ st.p.seekTo(s.start || 0, true); st.p.playVideo(); } musicLabel(); },
+          onError: () => { const b = $('#musicBtn'); b.hidden = false; b.textContent = '♪ Open song'; b.onclick = () => window.open('https://www.youtube.com/watch?v=' + s.id, '_blank'); }
+        } });
+    });
+  };
+  const sc = document.createElement('script'); sc.src = 'https://www.youtube.com/iframe_api'; document.head.append(sc);
+}
+function playSong(key){
+  loadSongs(); const prev = curPlayer(); if (prev && prev.ready && music.cur !== key) prev.p.pauseVideo();
+  music.cur = key; music.want = true; musicLabel();
+  const st = music.pl[key]; if (st && st.ready){ st.p.seekTo(CONFIG.music[key].start || 0, true); st.p.playVideo(); }
+}
+$('#musicBtn').onclick = () => { const st = curPlayer(); if (!st || !st.ready) return; if (st.on){ music.want = false; st.p.pauseVideo(); } else { music.want = true; st.p.playVideo(); } };
+// some phones only allow sound from a direct tap, so any tap nudges it to play
+document.addEventListener('pointerdown', () => { const st = curPlayer(); if (st && st.ready && music.want && !st.on) st.p.playVideo(); });
+
+/* ---------- live painted starry night ----------
+   Thousands of brush strokes ride a swirling flow field (big spiral currents, like oil paint in motion),
+   with haloed stars, a crescent moon, a cypress tree and a village with lit windows on top. */
+let skyRun = 0, SKYGL = null;
+/* run fn in a fresh task soon (a MessageChannel is not clamped/throttled like setTimeout), so long preparation is split into short tasks */
+const nextTask = (() => { const ch = new MessageChannel(), q = []; ch.port1.onmessage = () => { const f = q.shift(); if (f) f(); }; return f => { q.push(f); ch.port2.postMessage(0); }; })();
+/* Heavy one-off work (shader compile + link on a background thread via KHR_parallel_shader_compile, a warm-up draw,
+   a tiny GPU benchmark that picks the render resolution) happens here, ahead of time: it is started when she taps
+   Play, so by the time the finale starts the sky is ready and the first frame costs no more than any other frame.
+   Resolves true when the WebGL sky is ready, false when the 2D painter must be used. */
+function prepareSky(){
+  if (prepareSky.p) return prepareSky.p;
+  return prepareSky.p = new Promise(res => {
+    let settled = false; const done = ok => { if (!settled){ settled = true; if (!ok) SKYGL = null; res(ok); } };
+    try { SKYGL = createSkyGL(done); if (!SKYGL) done(false); }
+    catch (e) { console.warn('starry night: WebGL unavailable, using 2D painter', e); done(false); }
+    let shown = 0; const wd = setInterval(() => {            // watchdog: 8s of visible time without being ready -> 2D painter (hidden tabs do not count)
+      if (settled) return clearInterval(wd);
+      if (!document.hidden && (shown += 500) >= 8000){ clearInterval(wd); console.warn('starry night: WebGL too slow to start, using 2D painter'); if (SKYGL) SKYGL.destroy(); done(false); } }, 500);
+  });
+}
+function skyTo2D(){                       // swap to the 2D painter (no WebGL, failed compile, or lost context)
+  const old = $('#sky'); if (old.dataset.gl){ const n = old.cloneNode(false); delete n.dataset.gl; old.replaceWith(n); }
+  $('#sky').classList.add('czoom'); $('#skyfg').classList.add('czoom'); startSky2D();
+}
+function startSky(){ prepareSky().then(ok => { if (!ok) skyTo2D(); document.body.classList.add('skyon'); }); }
+
+/* ----- WebGL painter: a fragment shader paints every pixel as layered, impasto brush strokes that ride a
+   swirling flow field (great vortices + spinning star halos), with parallax hills, a lit village and a flame-like cypress. */
+const SKY_HEAD = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform vec2 uR; uniform vec2 uE; uniform float uT; uniform float uF; uniform float uZ;
+uniform vec2 uCam; uniform vec3 uPtr;
+uniform vec4 uV[5]; uniform vec4 uS[11]; uniform vec3 uMoon;
+uniform vec4 uG;  /* horizon y, wave y, cypress x, cypress height */
+uniform vec4 uG2; /* cypress width, church x, -, - */
+uniform float uZoom; uniform vec2 uZO;   /* camera zoom (1 = whole painting) and the point it moves toward */
+const vec2 LGT = vec2(-0.6, 0.8);
+/* how strongly each depth layer follows the camera: far sky least, cypress (closest) most, for a real dolly-in parallax */
+const float KS = .82, KF = .93, KN = 1., KC = 1.3;
+float gCx, gHw;
+vec2 basePt(vec2 fc){ return (fc - .5*uR)/min(uR.x, uR.y)*uZ; }
+vec2 zoomed(vec2 p, float k){ return uZO + (p - uZO)/(1. + (uZoom - 1.)*k); }
+/* sky-layer point -> pixel (inverse of zoomed(basePt(fc), KS) + uCam*.3) */
+vec2 skyPx(vec2 ps){ vec2 q = ps - uCam*.3; q = uZO + (q - uZO)*(1. + (uZoom - 1.)*KS); return q/uZ*min(uR.x, uR.y) + .5*uR; }
+
+float h12(vec2 p){ vec3 p3 = fract(vec3(p.xyx)*.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y)*p3.z); }
+vec4 h42(vec2 p){ vec4 p4 = fract(vec4(p.xyxy)*vec4(.1031,.1030,.0973,.1099)); p4 += dot(p4, p4.wzxy + 33.33); return fract((p4.xxyz + p4.yzzw)*p4.zywx); }
+float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3. - 2.*f);
+  return mix(mix(h12(i), h12(i + vec2(1.,0.)), f.x), mix(h12(i + vec2(0.,1.)), h12(i + vec2(1.,1.)), f.x), f.y); }
+
+float hillF(float x){ return uG.x + .03 + .028*sin(x*2.3 + .6) + .013*sin(x*6.1 + 2.) + .07*smoothstep(-.3, 1.2, x/uE.x); }
+float hillN(float x){ return uG.x - .065 + .02*sin(x*3.7 + 2.5) + .008*sin(x*11. + 1.); }
+`;
+/* pass 1 (low resolution): the sky's colour field and its flow direction, rendered to two small textures */
+const SKY_FLOW = `
+vec2 flow(vec2 p){
+  vec2 v = vec2(1., .3*sin(p.x*2.7 + uF*.13) + .22*sin(p.y*4. - p.x*1.3 + uF*.1));
+  for (int i = 0; i < 5; i++){ vec4 o = uV[i]; vec2 d = p - o.xy; float r2 = dot(d,d)/(o.z*o.z);
+    if (r2 < 9.) v += o.w*vec2(-d.y, d.x)/o.z*exp(-r2)*2.; }
+  for (int i = 0; i < 11; i++){ vec4 s = uS[i]; vec2 d = p - s.xy; float rr = s.z*3.2; float r2 = dot(d,d)/(rr*rr);
+    if (r2 < 9.) v += 4.5*vec2(-d.y, d.x)/rr*exp(-r2); }
+  vec2 d = p - uPtr.xy; v += uPtr.z*3.*vec2(-d.y, d.x)/.16*exp(-dot(d,d)/.0256);
+  return normalize(v + 1e-5);
+}
+`;
+const SKY_FIELD = SKY_FLOW + `
+vec3 skyCol(vec2 p){
+  float y01 = clamp((p.y - uG.x)/(uE.y - uG.x), 0., 1.);
+  vec2 w = p + .07*vec2(vn(p*3.5 + uF*.04) - .5, vn(p*3.5 + 9.1 - uF*.04) - .5);
+  vec3 c = mix(vec3(.40,.66,.90), vec3(.14,.33,.72), smoothstep(0., .3, y01));
+  c = mix(c, vec3(.04,.09,.33), smoothstep(.3, 1., y01));
+  float n = vn(w*vec2(2.5, 8.) + vec2(uF*.08, 0.));
+  c *= .78 + .42*n;
+  /* the great rolling wave across the sky */
+  float yb = uG.y + .06*sin(w.x*3. + uF*.22) + .025*sin(w.x*7.3 - uF*.3);
+  float bd = (w.y - yb)/.075; float band = exp(-bd*bd);
+  c = mix(c, mix(vec3(.30,.58,.88), vec3(.86,.95,.98), smoothstep(-.2, .8, sin(bd*4.5 + w.x*3. - uF*.5))), band*.75);
+  /* vortices: spiral arms of cyan / white / ultramarine */
+  for (int i = 0; i < 5; i++){ vec4 o = uV[i]; vec2 d = w - o.xy; float r = length(d)/o.z;
+    if (r < 1.7){ float sg = sign(o.w); float a = atan(d.y, d.x)*sg;
+      float arm = sin(r*8.5 - a - uF*.9*sg + float(i));
+      vec3 sc = mix(vec3(.10,.24,.62), vec3(.40,.72,.94), smoothstep(-.5, .3, arm));
+      sc = mix(sc, vec3(.90,.96,.97), smoothstep(.55, .95, arm));
+      if (i == 0) sc = mix(sc, vec3(.93,.90,.62), smoothstep(.85, 1., arm)*smoothstep(1.2, .4, r)*.8);
+      sc = mix(sc, vec3(.70,.86,.96), smoothstep(.35, 0., r)*.7);
+      c = mix(c, sc, smoothstep(1.7, .55, r)*min(1., abs(o.w)*.32 + .25)); } }
+  /* breathing star halos */
+  for (int i = 0; i < 11; i++){ vec4 s = uS[i]; vec2 d = w - s.xy; float r = length(d)/s.z;
+    if (r < 4.2){ float fi = float(i); r /= 1. + .1*sin(uT*1.25 + fi*1.7);
+      float ring = .5 + .5*cos(r*3.2 - uT*1.1 - fi);
+      vec3 inner = mix(vec3(1.,.97,.80), vec3(1.,.84,.32), smoothstep(.4, 1.2, r));
+      vec3 outer = mix(vec3(.90,.88,.50), vec3(.55,.80,.93), smoothstep(1.5, 3.2, r));
+      if (s.w > .5){ inner = mix(inner, vec3(1.,.72,.25), .35); outer = mix(outer, vec3(.95,.80,.40), .35); }
+      vec3 hc = mix(inner, outer, smoothstep(1., 1.8, r))*(.74 + .42*ring);
+      c = mix(c, hc, (1. - smoothstep(2.1, 4.2, r))*.92); } }
+  /* moon halo */
+  { vec2 d = w - uMoon.xy; float r = length(d)/uMoon.z;
+    if (r < 3.){ float ring = .5 + .5*cos(r*4.2 - uT*.8);
+      vec3 hc = mix(vec3(.90,.48,.12), vec3(.98,.74,.30), smoothstep(1., 2.2, r))*(.72 + .36*ring);
+      c = mix(c, hc, (1. - smoothstep(1.7, 3., r))*.92); } }
+  return c;
+}
+void main(){
+  vec2 p = zoomed(basePt(gl_FragCoord.xy), KS) + uCam*.3;
+#ifdef DIR
+  gl_FragColor = vec4(flow(p)*.5 + .5, 0., 1.);
+#else
+  gl_FragColor = vec4(skyCol(p), 1.);
+#endif
+}`;
+/* pass 2 (full resolution, into a texture): the sky's base colour */
+const SKY_BASE = `
+uniform sampler2D uCol;
+void main(){ gl_FragColor = vec4(texture2D(uCol, gl_FragCoord.xy/uR).rgb*.8, 1.); }`;
+const SKY_TINT = `
+vec3 tint(vec3 c, float j){ return c*(.84 + .32*j) + (j - .5)*vec3(-.05, .02, .07); }
+`;
+/* pass 3: the sky's brush strokes as real geometry. Each stroke is one small quad drawn in priority order with
+   premultiplied blending, instead of every pixel searching 3 layers x 9 neighbouring cells for the top stroke
+   (that search was ~75% of the GPU time). Same stroke shape, bristles, dry-brush tail and colours. */
+const SKY_STROKE_VS = SKY_FLOW + `
+attribute vec4 aC; attribute vec4 aH;
+uniform float uCs, uSpd;
+varying vec2 vL, vP, vCen; varying vec4 vS; varying vec2 vB;
+void main(){
+  vec4 h = aH;
+  float ph = fract(uF*uSpd*(.6 + .8*h.z) + h.w);
+  float life = .5 + .5*sin(3.14159*ph);
+  vec2 c0 = (aC.xy + .5 + (h.xy - .5)*.9)*uCs;
+  vec2 dir = flow(c0);
+  vec2 c = c0 + dir*(ph - .5)*uCs*1.3;
+  vec2 perp = vec2(-dir.y, dir.x);
+  float L = uCs*(.8 + .65*h.z)*life, Wd = uCs*(.24 + .17*h.x), k = (h.y - .5)*.9;
+  vec2 lc = aC.zw*vec2(L, Wd*(1. + abs(k)));
+  vec2 ps = c + dir*lc.x + perp*lc.y;
+  vL = lc; vP = ps; vCen = c; vS = vec4(L, Wd, k, h.y); vB = vec2(h.x, dot(perp, LGT));
+  gl_Position = vec4(skyPx(ps)/uR*2. - 1., 0., 1.);
+}`;
+const SKY_STROKE_FS = SKY_TINT + `
+uniform sampler2D uCol;
+varying vec2 vL, vP, vCen; varying vec4 vS; varying vec2 vB;
+void main(){
+  float u = vL.x/vS.x, v = vL.y/vS.y + vS.z*u*u;
+  float wp = .5 + .5*sqrt(max(0., 1. - u*u));
+  float s = (1. - smoothstep(.8, 1., abs(u)))*(1. - smoothstep(.78, 1., abs(v)/wp));
+  float br = sin(v*16. + vB.x*40. + u*2.5);
+  s *= 1. - smoothstep(.35, 1., u)*(.55 + .45*br)*.7;
+  float lp = vB.y;
+  float sh = 1. + .30*v*lp - .14*v*v + .07*br + .10*pow(max(br, 0.), 6.)*(.4 + .6*max(v*lp, 0.));
+  vec3 col = tint(texture2D(uCol, skyPx(mix(vP, vCen, .85))/uR).rgb, vS.w)*sh;
+  gl_FragColor = vec4(col*s, s);
+}`;
+/* pass 4: star cores, moon and her touch-light, one quad each (premultiplied: rgb = glow*(1-a) + top*a) */
+const SKY_DOT_VS = `
+attribute vec2 a; uniform vec4 uQ; varying vec2 vP;
+void main(){ vP = uQ.xy + a*uQ.z; gl_Position = vec4(skyPx(vP)/uR*2. - 1., 0., 1.); }`;
+const SKY_DOT_FS = `
+uniform vec4 uQ, uQ2; varying vec2 vP;
+void main(){
+  vec2 d = vP - uQ.xy; vec3 add = vec3(0.), top = vec3(0.); float a = 0.;
+  if (uQ2.x < .5){ float r = length(d)/uQ2.w, br = 1. + .14*sin(uT*1.25 + uQ2.y*1.7);
+    vec3 sc = uQ2.z > .5 ? vec3(1.,.86,.45) : vec3(1.,.96,.78);
+    add = sc*(.22*exp(-r*.75)*br + 1.1*exp(-r*r*3.)); a = smoothstep(.55, .38, r); top = vec3(1.,.99,.92); }
+  else if (uQ2.x < 1.5){ float r = length(d)/uMoon.z, br = 1. + .08*sin(uT*.9);
+    add = vec3(1.,.62,.22)*(.14*exp(-r*.9)*br);
+    float disc = smoothstep(1., .93, r), cut = smoothstep(.97, 1.05, length(d - vec2(.48, .2)*uMoon.z)/(uMoon.z*.86));
+    a = disc*cut;
+    if (a > 0.){ float n = vn(d/uMoon.z*vec2(9., 3.) + 4.); top = mix(vec3(1.,.90,.45), vec3(1.,.98,.80), n)*(1. + .08*sin(atan(d.y, d.x)*12.)); } }
+  else add = vec3(1.,.86,.48)*uPtr.z*.28*exp(-dot(d, d)/.012);
+  gl_FragColor = vec4(add*(1. - a) + top*a, a);
+}`;
+/* pass 5a (to screen, everywhere no foreground can be): just the painted sky texture, vignette and grain */
+const SKY_PLAIN = `
+uniform sampler2D uSky;
+void main(){
+  vec2 p = basePt(gl_FragCoord.xy); vec3 col = texture2D(uSky, gl_FragCoord.xy/uR).rgb;
+  vec2 e = p/uE; col *= 1. - .28*smoothstep(.55, 1.5, length(e));
+  col *= .95 + .1*vn(gl_FragCoord.xy*.7);
+  gl_FragColor = vec4(col, 1.);
+}`;
+/* pass 5b (to screen, only inside the band/column where hills, village or cypress can be): the full painter */
+const SKY_MAIN = SKY_TINT + `
+uniform sampler2D uSky;
+
+/* one layer of brush strokes: picks the top-most stroke covering p among the 3x3 neighbouring cells */
+float strokes(vec2 p, vec2 dir, float cs, float seed, float spd, out vec2 cen, out float shade, out float jit){
+  vec2 perp = vec2(-dir.y, dir.x); vec2 id = floor(p/cs);
+  float best = -1., cov = 0.; shade = 1.; jit = .5; cen = p;
+  float lp = dot(perp, LGT);
+  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++){
+    vec2 cid = id + vec2(float(i), float(j));
+    vec4 h = h42(cid + seed);
+    float ph = fract(uF*spd*(.6 + .8*h.z) + h.w);
+    float life = spd > 0. ? .5 + .5*sin(3.14159*ph) : 1.;
+    vec2 c = (cid + .5 + (h.xy - .5)*.9)*cs + (spd > 0. ? dir*(ph - .5)*cs*1.3 : vec2(0.));
+    vec2 d = p - c;
+    float L = cs*(.8 + .65*h.z)*life, Wd = cs*(.24 + .17*h.x);
+    float u = dot(d, dir)/L, v = dot(d, perp)/Wd;
+    v += (h.y - .5)*.9*u*u;
+    float wp = .5 + .5*sqrt(max(0., 1. - u*u));
+    float s = (1. - smoothstep(.8, 1., abs(u)))*(1. - smoothstep(.78, 1., abs(v)/wp));
+    if (s > .002){ float pr = fract(h.w*7.31 + h.z*.37);
+      if (pr > best){ best = pr; cov = s; cen = c; jit = h.y;
+        float br = sin(v*16. + h.x*40. + u*2.5);
+        float tail = smoothstep(.35, 1., u);
+        cov *= 1. - tail*(.55 + .45*br)*.7;  /* dry-brush tail */
+        shade = 1. + .30*v*lp - .14*v*v + .07*br + .10*pow(max(br, 0.), 6.)*(.4 + .6*max(v*lp, 0.)); } }
+  }
+  return cov;
+}
+
+vec3 fgCol(int reg, vec2 q){
+  if (reg == 1){ float d = hillF(q.x) - q.y; float n = vn(q*vec2(6., 14.));
+    vec3 c = mix(vec3(.30,.45,.78), vec3(.13,.23,.52), smoothstep(0., .05, d));
+    c = mix(c, vec3(.12,.30,.42), smoothstep(.55, .85, n)*.6);
+    return mix(c, vec3(.06,.12,.32), smoothstep(.08, .25, d)); }
+  if (reg == 2){ float d = hillN(q.x) - q.y; float n = vn(q*vec2(7., 12.) + 3.);
+    vec3 c = mix(vec3(.13,.27,.44), vec3(.06,.15,.26), smoothstep(0., .1, d));
+    c = mix(c, vec3(.10,.25,.18), smoothstep(.45, .8, n)*.7);
+    c = mix(c, vec3(.30,.44,.66), smoothstep(.72, .95, vn(q*vec2(11., 20.) + 9.))*.6);
+    return c*mix(1., .5, smoothstep(.1, .5, d)); }
+  float n = vn(q*vec2(14., 5.) + vec2(0., uT*.05));
+  vec3 c = mix(vec3(.02,.05,.04), vec3(.10,.20,.11), n);
+  c = mix(c, vec3(.22,.32,.13), smoothstep(.68, .95, vn(q*vec2(22., 7.) + 5.))*.85);
+  float sx = (q.x - gCx)/max(gHw, 1e-3);
+  c = mix(c, vec3(.16,.26,.42), smoothstep(.35, 1., sx)*.55);
+  return mix(c, vec3(0.,.015,.02), smoothstep(.3, 1., -sx)*.5);
+}
+
+vec3 paintFG(vec2 q, int reg){
+  vec2 dir; float c1 = .044, c2 = .027, sp = 0.;
+  if (reg == 1){ float s = (hillF(q.x + .01) - hillF(q.x - .01))/.02; dir = normalize(vec2(1., s + .55*sin(q.x*14. + q.y*25.))); }
+  else if (reg == 2) dir = normalize(vec2(1., .5*sin(q.x*9. + q.y*16.) + .15));
+  else { dir = normalize(vec2(.42*sin(q.y*15. + q.x*30. + uT*.35), 1.)); c1 = .05; c2 = .03; sp = .03; }
+  vec2 cen; float sh, j, cov;
+  vec3 col = fgCol(reg, q)*.72;
+  cov = strokes(q, dir, c1, 21.7 + float(reg), sp, cen, sh, j); if (cov > 0.) col = mix(col, tint(fgCol(reg, mix(q, cen, .85)), j)*sh, cov);
+  cov = strokes(q, dir, c2, 31.3 + float(reg), sp, cen, sh, j); if (cov > 0.) col = mix(col, tint(fgCol(reg, mix(q, cen, .85)), j)*sh, cov);
+  return col;
+}
+
+/* one village house (row 0 back, row 1 front); returns 1 when q hits it */
+float house(vec2 q, float row, out vec3 c){
+  float cw = .07 - row*.008;
+  float k = floor(q.x/cw + row*.5);
+  vec4 h = h42(vec2(k, row*13. + 3.));
+  if (h.w*h.x > .45 || (abs(q.x - uG2.y) < .085 && row < .5)) return 0.;
+  float x0 = (k - row*.5)*cw + cw*(.04 + h.x*.12), w = cw*(.6 + .3*h.y);
+  float base = hillN(x0 + w*.5) - .012 - row*.04 - h.z*.018, hh = .014 + .016*h.w, rh = .011 + .01*h.x;
+  float lx = q.x - x0, ly = q.y - base;
+  float roof = hh + rh*(1. - abs(lx/w*2. - 1.));
+  if (lx < -.004 || lx > w + .004 || ly > roof || ly < -.006) return 0.;
+  if (ly <= hh && (lx < 0. || lx > w)) return 0.;
+  float g = vn(q*vec2(90., 380.))*.22 + vn(q*500.)*.08;
+  if (ly > hh){ c = mix(vec3(.07,.11,.28), vec3(.34,.26,.24), step(.72, h.z))*(.85 + g); if (roof - ly < .0025) c *= .4; return 1.; }
+  c = mix(mix(vec3(.17,.25,.45), vec3(.30,.36,.50), h.y), vec3(.36,.38,.36), step(.8, h.x))*(.8 + g)*(row > .5 ? .85 : 1.);
+  if (lx < .002 || w - lx < .002 || ly < .002) c *= .4;
+  float ww = w*.16, wh = hh*.3;
+  for (int k2 = 0; k2 < 2; k2++){ float wx = w*(k2 == 0 ? .2 : .62), wy = hh*.3;
+    if (lx > wx && lx < wx + ww && ly > wy && ly < wy + wh && h42(vec2(k + float(k2)*.5, row)).x > .3)
+      c = vec3(1.,.80,.34)*(.92 + .12*sin(uT*1.3 + k*2.1 + float(k2)));
+    else c += vec3(.35,.22,.05)*exp(-length(vec2(lx - wx - ww*.5, ly - wy - wh*.5))/ww*1.4)*.5; }
+  return 1.;
+}
+float church(vec2 q, out vec3 c){
+  float x = q.x - uG2.y, base = hillN(uG2.y) - .03;
+  float ly = q.y - base;
+  float nave = step(abs(x + .02), .036)*step(ly, .03 + .014*(1. - abs(x + .02)/.036))*step(-.006, ly);
+  float tower = step(abs(x - .022), .008)*step(ly, .062)*step(-.006, ly);
+  float spire = step(abs(x - .022), .008*max(0., 1. - (ly - .062)/.085))*step(.062, ly);
+  if (nave + tower + spire < .5){ return 0.; }
+  float g = vn(q*vec2(90., 380.))*.2;
+  c = (spire + tower > .5 ? vec3(.08,.12,.28) : vec3(.20,.26,.44))*(.85 + g);
+  if (nave > .5 && tower + spire < .5 && abs(x + .02) < .005 && ly > .008 && ly < .022) c = vec3(1.,.78,.32);
+  return 1.;
+}
+
+void main(){
+  vec2 p = basePt(gl_FragCoord.xy);
+  vec2 pf = zoomed(p, KF) + uCam*.55, pn = zoomed(p, KN) + uCam*.8, pc = zoomed(p, KC) + uCam*1.2;
+  float cu = clamp((pc.y + uE.y + .04)/uG.w, 1e-4, 1.2);
+  gCx = uG.z + sin(cu*7. + 1.)*uG2.x*.18*cu + sin(uT*.45)*.014*cu*cu;
+  gHw = uG2.x*(.5*sin(3.14159*pow(min(cu, 1.), .62)) + .05);
+  gHw *= 1. + .16*sin(cu*30. + sign(pc.x - gCx)*1.7 + uT*.5);
+  gHw += (vn(pc*55.) - .5)*.012;
+  int reg = 0; vec3 hc = vec3(0.);
+  if (cu < 1. && abs(pc.x - gCx) < gHw) reg = 4;
+  else if (church(pn, hc) > .5 || house(pn, 1., hc) > .5 || house(pn, 0., hc) > .5) reg = 3;
+  else if (pn.y < hillN(pn.x) + (vn(pn*40.) - .5)*.006) reg = 2;
+  else if (pf.y < hillF(pf.x) + (vn(pf*40.) - .5)*.006) reg = 1;
+  vec3 col;
+  if (reg == 0) col = texture2D(uSky, gl_FragCoord.xy/uR).rgb;
+  else if (reg == 1) col = paintFG(pf, 1);
+  else if (reg == 2) col = paintFG(pn, 2);
+  else if (reg == 4) col = paintFG(pc, 4);
+  else col = hc;
+  vec2 e = p/uE; col *= 1. - .28*smoothstep(.55, 1.5, length(e));
+  col *= .95 + .1*vn(gl_FragCoord.xy*.7);
+  gl_FragColor = vec4(col, 1.);
+}`;
+
+function createSkyGL(onReady){
+  if (/[?&]sky=2d\b/.test(location.search)) return null;
+  const cv = $('#sky'), opts = {alpha:false, antialias:false, depth:false, stencil:false, premultipliedAlpha:false, preserveDrawingBuffer:false, powerPreference:'high-performance', failIfMajorPerformanceCaveat:true};
+  const gl = cv.getContext('webgl', opts) || cv.getContext('experimental-webgl', opts);
+  if (!gl) return null;
+  cv.dataset.gl = '1';
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const ext = gl.getExtension('KHR_parallel_shader_compile');
+  const NAMES = ['uR','uE','uT','uF','uZ','uCam','uPtr','uV','uS','uMoon','uG','uG2','uZoom','uZO','uCol','uSky','uCs','uSpd','uQ','uQ2'];
+  const FULL_VS = 'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}';
+  const DEFS = { field:[FULL_VS, SKY_HEAD + SKY_FIELD], dir:[FULL_VS, '#define DIR\n' + SKY_HEAD + SKY_FIELD], base:[FULL_VS, SKY_HEAD + SKY_BASE],
+                 stroke:[SKY_HEAD + SKY_STROKE_VS, SKY_HEAD + SKY_STROKE_FS], dot:[SKY_HEAD + SKY_DOT_VS, SKY_HEAD + SKY_DOT_FS], plain:[FULL_VS, SKY_HEAD + SKY_PLAIN], comp:[FULL_VS, SKY_HEAD + SKY_MAIN] };
+  let progs = {}, shaders = [], tri, quad, sbuf, ibuf, fbo, layers = [], W, H, U, fw, fh, scale = 0, ready = false, lost = false, alive = true, lostTimer;
+  const Vb = new Float32Array(20), Sb = new Float32Array(44), px1 = new Uint8Array(4), zo = [0, 0];
+  let moon = [0, 0, .062], geo = {};
+
+  /* ---- compile everything first, link everything after, and only then ask for the status (lets the browser do it off the main thread) ---- */
+  function compileAll(){
+    progs = {}; shaders = []; const cache = {};
+    const sh = (type, src) => { const key = type + src; if (cache[key]) return cache[key]; const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); shaders.push(s); return cache[key] = s; };
+    Object.keys(DEFS).forEach(k => { progs[k] = {vs: sh(gl.VERTEX_SHADER, DEFS[k][0]), fs: sh(gl.FRAGMENT_SHADER, DEFS[k][1])}; });
+  }
+  function linkAll(){
+    Object.keys(progs).forEach(k => { const o = progs[k], p = o.p = gl.createProgram(); gl.attachShader(p, o.vs); gl.attachShader(p, o.fs);
+      if (k === 'stroke'){ gl.bindAttribLocation(p, 0, 'aC'); gl.bindAttribLocation(p, 1, 'aH'); } else gl.bindAttribLocation(p, 0, 'a');
+      gl.linkProgram(p); });
+  }
+  const doneQ = (list, fn) => !ext || list.every(o => gl[fn](o, ext.COMPLETION_STATUS_KHR));
+  function finish(){
+    Object.keys(progs).forEach(k => { const o = progs[k];
+      if (!gl.getProgramParameter(o.p, gl.LINK_STATUS) && !gl.isContextLost())
+        throw new Error('sky shader "' + k + '": ' + (gl.getShaderInfoLog(o.vs) || '') + ' ' + (gl.getShaderInfoLog(o.fs) || '') + ' ' + (gl.getProgramInfoLog(o.p) || ''));
+      o.loc = {}; NAMES.forEach(n => o.loc[n] = gl.getUniformLocation(o.p, n)); });
+    const buf = a => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(a), gl.STATIC_DRAW); return b; };
+    tri = buf([-1,-1, 3,-1, -1,3]); quad = buf([-1,-1, 1,-1, -1,1, 1,1]); sbuf = gl.createBuffer(); ibuf = gl.createBuffer();
+    fbo = [0, 1, 2].map(() => { const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      return {tex, fb: gl.createFramebuffer()}; });
+    gl.enableVertexAttribArray(0);
+  }
+
+  /* ---- the brush strokes: one quad per stroke, sorted by priority so the top-most stroke is drawn last ---- */
+  function buildStrokes(){
+    const ex = W/U/2*1.03 + .12, ey = H/U/2*1.03 + .12, defs = [[.064, .10], [.042, .16], [.027, .24]];
+    let seed = 1234567; const r = () => (seed = seed*16807 % 2147483647)/2147483647;
+    const all = []; layers = [];
+    defs.forEach(([cs, spd]) => { const list = [], x0 = Math.floor(-ex/cs) - 2, x1 = Math.ceil(ex/cs) + 2, y0 = Math.floor(-ey/cs) - 2, y1 = Math.ceil(ey/cs) + 2;
+      for (let j = y0; j <= y1; j++) for (let i = x0; i <= x1; i++) list.push([i, j, r(), r(), r(), r(), r()]);
+      list.sort((a, b) => a[6] - b[6]);
+      const n = Math.min(list.length, 16000 - all.length); layers.push({cs, spd, first: all.length, n});
+      for (let k = 0; k < n; k++) all.push(list[k]); });
+    const v = new Float32Array(all.length*32), ix = new Uint16Array(all.length*6), C = [-1,-1, 1,-1, 1,1, -1,1];
+    all.forEach((s, n) => { for (let c = 0; c < 4; c++){ const o = (n*4 + c)*8; v[o] = s[0]; v[o+1] = s[1]; v[o+2] = C[c*2]; v[o+3] = C[c*2+1]; v[o+4] = s[2]; v[o+5] = s[3]; v[o+6] = s[4]; v[o+7] = s[5]; }
+      const b = n*4; ix.set([b, b+1, b+2, b, b+2, b+3], n*6); });
+    gl.bindBuffer(gl.ARRAY_BUFFER, sbuf); gl.bufferData(gl.ARRAY_BUFFER, v, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibuf); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, ix, gl.STATIC_DRAW);
+  }
+
+  function layout(){
+    W = innerWidth; H = innerHeight; U = Math.min(W, H);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (!scale) scale = Math.min(dpr, Math.sqrt(4.5e5/(W*H)));            // first guess; the benchmark below refines it
+    const s = Math.max(.4, Math.min(dpr, scale, Math.sqrt(1.5e6/(W*H))));
+    cv.width = Math.max(1, Math.round(W*s)); cv.height = Math.max(1, Math.round(H*s));
+    fw = Math.max(1, Math.ceil(cv.width/3)); fh = Math.max(1, Math.ceil(cv.height/3));
+    fbo.forEach((f, i) => { gl.bindTexture(gl.TEXTURE_2D, f.tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, i < 2 ? fw : cv.width, i < 2 ? fh : cv.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, f.fb); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, f.tex, 0);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE && !gl.isContextLost()) throw new Error('sky framebuffer incomplete'); });
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.bindTexture(gl.TEXTURE_2D, null);
+    const port = H > W*1.15, P = (fx, fy) => [(fx - .5)*W/U, (.5 - fy)*H/U];
+    const vs = port ? [[.55,.27,.24,3.2],[.22,.2,.13,-2.6],[.8,.4,.11,2.2],[.18,.48,.09,-1.8],[.7,.55,.09,-1.6]]
+                    : [[.53,.33,.22,3.2],[.27,.24,.13,-2.6],[.84,.48,.11,2.2],[.14,.5,.09,-1.8],[.68,.55,.09,-1.6]];
+    vs.forEach((v, i) => { const [x, y] = P(v[0], v[1]); Vb.set([x, y, v[2], v[3]], i*4); });
+    const ss = [[.12,.12,.026,0],[.31,.08,.02,1],[.45,.18,.024,0],[.66,.09,.022,0],[.93,.3,.025,1],[.37,.4,.018,0],[.06,.38,.02,0],[.75,.32,.02,1],[.58,.05,.017,0],[.2,.29,.018,0],[.7,.2,.019,0]];
+    ss.forEach((v, i) => { const [x, y] = P(v[0], port ? v[1]*.85 : v[1]); Sb.set([x, y, v[2]*(port ? 1.15 : 1), v[3]], i*4); });
+    const mo = P(port ? .8 : .86, port ? .1 : .14), hz = P(0, port ? .79 : .74)[1], wave = P(0, port ? .4 : .45)[1];
+    moon = [mo[0], mo[1], .062]; geo = {hz, cyx: P(port ? .1 : .15, 0)[0], cyh: (port ? .56 : .66)*H/U, cyw: Math.max(.1, 56/U), ey: H/U/2}; const o = P(.63, .88); zo[0] = o[0]; zo[1] = o[1];      // the camera moves toward the village (same spot the old CSS zoom used)
+    Object.keys(progs).forEach(k => { const l = progs[k].loc, low = k === 'field' || k === 'dir'; gl.useProgram(progs[k].p);
+      gl.uniform2f(l.uR, low ? fw : cv.width, low ? fh : cv.height); gl.uniform2f(l.uE, W/U/2, H/U/2);
+      gl.uniform4fv(l.uV, Vb); gl.uniform4fv(l.uS, Sb); gl.uniform3f(l.uMoon, mo[0], mo[1], .062);
+      gl.uniform4f(l.uG, hz, wave, P(port ? .1 : .15, 0)[0], (port ? .56 : .66)*H/U);
+      gl.uniform4f(l.uG2, Math.max(.1, 56/U), P(port ? .7 : .64, 0)[0], 0, 0); gl.uniform2f(l.uZO, zo[0], zo[1]);
+      gl.uniform1i(l.uCol, 0); gl.uniform1i(l.uSky, 2); });
+    buildStrokes();
+  }
+
+  let t = 0, F = 0, last = 0, lastDraw = 0, acc = 0, nf = 0, drops = 0, stillDone = false;
+  const ptr = {x:0, y:0, tx:0, ty:0, s:0};
+  /* one frame: low-res colour/flow field -> sky base -> stroke quads -> stars & moon -> composite with the foreground.
+     cover < 1: the street covers everything below that fraction of the screen, so only the top part is painted */
+  function draw(zoom, cover){
+    const g = Math.max(0, Math.sin(t*.21)*Math.sin(t*.13 + 1)), gust = g*g;
+    const z = 1 - .015*Math.sin(t*.05), cx = Math.sin(t*.09)*.022 + ptr.x*.012, cy = Math.sin(t*.067 + 1.3)*.013 + ptr.y*.008;
+    Object.keys(progs).forEach(k => { const l = progs[k].loc; gl.useProgram(progs[k].p);
+      gl.uniform1f(l.uT, t); gl.uniform1f(l.uF, F); gl.uniform1f(l.uZ, z); gl.uniform2f(l.uCam, cx, cy); gl.uniform3f(l.uPtr, ptr.x, ptr.y, ptr.s); gl.uniform1f(l.uZoom, zoom); });
+    gl.disable(gl.BLEND); gl.disable(gl.SCISSOR_TEST);
+    gl.bindBuffer(gl.ARRAY_BUFFER, tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.disableVertexAttribArray(1);
+    gl.viewport(0, 0, fw, fh);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[0].fb); gl.useProgram(progs.field.p); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[1].fb); gl.useProgram(progs.dir.p); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.viewport(0, 0, cv.width, cv.height);
+    if (cover < 1){ const h = Math.min(cv.height, Math.ceil(cv.height*cover)); gl.enable(gl.SCISSOR_TEST); gl.scissor(0, cv.height - h, cv.width, h); }
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, fbo[0].tex);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[2].fb); gl.useProgram(progs.base.p); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.useProgram(progs.stroke.p); const sl = progs.stroke.loc;
+    gl.bindBuffer(gl.ARRAY_BUFFER, sbuf); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 32, 0); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 32, 16);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibuf);
+    layers.forEach(L => { gl.uniform1f(sl.uCs, L.cs); gl.uniform1f(sl.uSpd, L.spd); gl.drawElements(gl.TRIANGLES, L.n*6, gl.UNSIGNED_SHORT, L.first*12); });
+    gl.disableVertexAttribArray(1);
+    gl.useProgram(progs.dot.p); const dl = progs.dot.loc;
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    for (let i = 0; i < 11; i++){ const o = i*4; gl.uniform4f(dl.uQ, Sb[o], Sb[o+1], Sb[o+2]*7, 0); gl.uniform4f(dl.uQ2, 0, i, Sb[o+3], Sb[o+2]); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); }
+    gl.uniform4f(dl.uQ, moon[0], moon[1], moon[2]*8, 0); gl.uniform4f(dl.uQ2, 1, 0, 0, moon[2]); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    if (ptr.s > .01){ gl.uniform4f(dl.uQ, ptr.x, ptr.y, .3, 0); gl.uniform4f(dl.uQ2, 2, 0, 0, 0); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); }
+    gl.disable(gl.BLEND);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, fbo[2].tex); gl.activeTexture(gl.TEXTURE0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.useProgram(progs.plain.p); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.useProgram(progs.comp.p); gl.enable(gl.SCISSOR_TEST);
+    fgRects(zoom, cx, cy, z, cover).forEach(r => { gl.scissor(r[0], r[1], r[2], r[3]); gl.drawArrays(gl.TRIANGLES, 0, 3); });
+    gl.disable(gl.SCISSOR_TEST);
+    return gust;
+  }
+  /* where (in canvas pixels, GL y-up) hills, village or cypress can appear this frame: a band up to the highest hill/spire,
+     plus the cypress column. Only there does the expensive foreground painter run. */
+  function fgRects(zoom, cx, cy, z, cover){
+    const Wc = cv.width, Hc = cv.height, M = Math.min(Wc, Hc), out = [];
+    const toPx = (qx, qy, k, f) => { const s = 1 + (zoom - 1)*k; return [(zo[0] + (qx - cx*f - zo[0])*s)/z*M + .5*Wc, (zo[1] + (qy - cy*f - zo[1])*s)/z*M + .5*Hc]; };
+    const top = Math.max(toPx(0, geo.hz + .16, .93, .55)[1], toPx(0, geo.hz + .1, 1, .8)[1]);
+    const low = cover < 1 ? Hc - Math.ceil(Hc*cover) : 0;
+    const add = (x0, y0, x1, y1) => { x0 = Math.max(0, Math.floor(x0)); x1 = Math.min(Wc, Math.ceil(x1)); y0 = Math.max(low, Math.floor(y0)); y1 = Math.min(Hc, Math.ceil(y1));
+      if (x1 > x0 && y1 > y0) out.push([x0, y0, x1 - x0, y1 - y0]); };
+    add(0, 0, Wc, top + 2);
+    const a = toPx(geo.cyx - geo.cyw*.9 - .03, -geo.ey - 1, 1.3, 1.2), b = toPx(geo.cyx + geo.cyw*.9 + .03, geo.cyh - geo.ey - .02, 1.3, 1.2);
+    if (b[1] > top) add(a[0], top, b[0], b[1] + 2);
+    return out;
+  }
+  const sync = () => gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px1);
+
+  /* called by the finale's single animation loop every frame */
+  function frame(now, zoom, cover){
+    if (!ready || lost || !alive) return;
+    if (still){ if (!stillDone){ stillDone = true; t = 14; F = 9; draw(1, 1); } return; }
+    if (now - lastDraw < 12) return;                    // cap at ~60fps on 120Hz screens (60Hz frames are never skipped)
+    const raw = last ? now - last : 16.7, dt = Math.min(.1, raw/1000); last = lastDraw = now; t += dt;
+    if (raw < 120 && !document.hidden){ acc += raw; if (++nf === 60){ if (acc/nf > 26 && drops < 2 && scale > .5){ drops++; scale *= .85; layout(); } acc = nf = 0; } }   // emergency only: resolution is chosen up front
+    ptr.s *= Math.exp(-dt*1.3); const k = Math.min(1, dt*5); ptr.x += (ptr.tx - ptr.x)*k; ptr.y += (ptr.ty - ptr.y)*k;
+    const gust = draw(zoom || 1, cover == null ? 1 : cover); F += dt*(.6 + .9*gust + ptr.s*1.2);
+  }
+
+  /* ---- preparation, spread over several tasks so no single frame is long ---- */
+  const best = {};
+  const bench = z => () => { if (document.hidden) return false;      // a hidden page gets a throttled GPU: measure only while visible
+    const a = performance.now(); draw(z, 1); sync(); best[z] = Math.min(best[z] || 1e9, performance.now() - a); };   // one draw per task (no long task), tasks back to back so the GPU clock ramps up; best of 3
+  const steps = [
+    () => compileAll(),
+    () => doneQ(shaders, 'getShaderParameter'),
+    () => linkAll(),
+    () => doneQ(Object.keys(progs).map(k => progs[k].p), 'getProgramParameter'),
+    () => { finish(); layout(); },
+    () => { draw(1, 1); sync(); }, () => { draw(2.7, 1); sync(); },   // warm-up: the driver finishes its own work on the first real draw, while the canvas is still invisible
+    bench(1), bench(2.7), bench(1), bench(2.7), bench(1), bench(2.7),
+    () => { // pick the sharpest resolution that leaves room for 60fps on this GPU (target ~8ms for the sky)
+      const ms = Math.max(best[1], best[2.7]), cur = cv.width/W, want = cur*Math.sqrt(SKY_GPU_MS/Math.max(ms, 1));
+      const dpr = Math.min(window.devicePixelRatio || 1, 2), next = Math.max(.4, Math.min(dpr, want));
+      if (Math.abs(next - cur)/cur > .06){ scale = next; layout(); }
+      skyGLInfo.benchMs = Math.round(ms*10)/10; skyGLInfo.scale = Math.round(cv.width/W*100)/100; skyGLInfo.px = cv.width + 'x' + cv.height;
+      t = 0; F = 0; ready = true; }
+  ];
+  let si = 0;
+  (function run(){
+    if (!alive) return;
+    try {
+      if (gl.isContextLost()) throw new Error('context lost during setup');
+      const r = steps[si](); if (r === false){ setTimeout(run, 10); return; }
+      si++; if (si < steps.length) nextTask(run); else onReady(true);
+    } catch (e){ console.warn('starry night: WebGL failed, using 2D painter', e); alive = false; onReady(false); }
+  })();
+
+  if (!still){
+    const mv = (e, s) => { ptr.tx = (e.clientX - W/2)/U; ptr.ty = (H/2 - e.clientY)/U; ptr.s = Math.max(ptr.s, s); };
+    window.addEventListener('pointermove', e => mv(e, .55), {passive:true});
+    window.addEventListener('pointerdown', e => { mv(e, 1); ptr.x = ptr.tx; ptr.y = ptr.ty; }, {passive:true});
+  }
+  let rs; const onResize = () => { clearTimeout(rs); rs = setTimeout(() => { if (alive && ready && !lost){ layout(); if (still){ stillDone = false; frame(performance.now(), 1, 1); } } }, 200); };
+  window.addEventListener('resize', onResize); window.addEventListener('orientationchange', onResize);
+  const api = { frame, onLost: null, destroy(){ alive = false; } };
+  cv.addEventListener('webglcontextlost', e => { e.preventDefault(); lost = true; clearTimeout(lostTimer);
+    lostTimer = setTimeout(() => { if (lost && alive && ready && api.onLost){ alive = false; api.onLost(); } }, 1500); });   // not back quickly: hand over to the 2D painter
+  cv.addEventListener('webglcontextrestored', () => { if (!alive) return;
+    try { compileAll(); linkAll(); finish(); layout(); lost = false; last = 0; stillDone = false; } catch (err){ console.warn(err); } });
+  return api;
+}
+const skyGLInfo = {};
+let SKY_GPU_MS = 8;           // GPU time per frame the sky may use; the render resolution is chosen to fit it
+
+function startSky2D(){
+  const run = ++skyRun, paint = $('#sky'), fgc = $('#skyfg'), pc = paint.getContext('2d'), fc = fgc.getContext('2d');
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches, rnd = (a,b) => a + Math.random()*(b-a);
+  let W, H, m, hz, t = 0, last = 0, parts, vort, fgImg, wins, bigStars, smallStars, baseGrad, fdpr;
+  const ALL = ['#0a1a55','#0f2870','#16388a','#1c46a0','#2559b8','#3374cc','#4f90dc','#74afe8','#9fcdf0'], LIGHT = ['#d6ecff','#fff2b0','#ffe27a','#ffd24a','#e9f6ff'];
+
+  function setup(){
+    W = innerWidth; H = innerHeight; m = Math.min(W,H); hz = H*.74; fdpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    paint.width = W; paint.height = H; fgc.width = W*fdpr; fgc.height = H*fdpr; fc.setTransform(fdpr,0,0,fdpr,0,0);
+    baseGrad = pc.createLinearGradient(0,0,0,hz*1.05); baseGrad.addColorStop(0,'#081447'); baseGrad.addColorStop(.55,'#173a8f'); baseGrad.addColorStop(1,'#3f7fc8');
+    pc.fillStyle = baseGrad; pc.fillRect(0,0,W,H);
+    vort = [ {x:W*.56, y:H*.33, r:m*.21, s:3.4, d:1}, {x:W*.25, y:H*.24, r:m*.13, s:2.6, d:-1}, {x:W*.84, y:H*.5, r:m*.11, s:2, d:1}, {x:W*.4, y:H*.55, r:m*.09, s:1.5, d:-1} ];
+    const n = Math.max(650, Math.min(1500, Math.round(W*H/1700)));
+    parts = Array.from({length:n}, () => spawn({}));
+    bigStars = [[.12,.14],[.3,.09],[.46,.2],[.68,.1],[.9,.3],[.36,.38],[.08,.4],[.74,.43],[.58,.06],[.22,.3],[.82,.2]].map(([a,b]) => ({x:a*W, y:b*H, r:m*rnd(.016,.027), p:rnd(0,6.28), warm:Math.random() < .3}));
+    smallStars = Array.from({length: Math.round(W*H/26000)}, () => ({x:rnd(0,W), y:rnd(0,hz*.9), r:rnd(.8,2.2), p:rnd(0,6.28), s:rnd(.8,2.4)}));
+    buildForeground();
+    for (let i = 0; i < 80; i++) stepParts(1.6);               // pre-paint the sky so it is full from the first frame
+  }
+  function ang(x,y){ let vx = Math.cos(y*.011 + t*.25)*.55 + .4, vy = Math.sin(x*.009 - t*.2)*.35;
+    for (const v of vort){ const dx = x - v.x, dy = y - v.y, d2 = dx*dx + dy*dy + 1, d = Math.sqrt(d2), f = v.s*Math.exp(-d2/(2*v.r*v.r)); vx += -dy/d*f*v.d; vy += dx/d*f*v.d; }
+    return Math.atan2(vy,vx); }
+  function spawn(p){
+    p.x = rnd(-20, W+20); p.y = rnd(-20, hz); p.life = 0; p.max = rnd(60,190); p.w = rnd(2.2,7.5)*(m/760 + .35);
+    let near = 9; for (const v of vort) near = Math.min(near, Math.hypot(p.x - v.x, p.y - v.y)/v.r);
+    const t0 = Math.max(0, Math.min(1, p.y/hz));
+    if (near < .75 && Math.random() < .45) p.col = LIGHT[Math.random()*LIGHT.length|0];
+    else if (Math.random() < .035) p.col = LIGHT[Math.random()*LIGHT.length|0];
+    else p.col = ALL[Math.min(ALL.length-1, Math.floor((t0*.62 + Math.random()*.5)*ALL.length))];
+    p.a = rnd(.45,.9); return p; }
+  function stepParts(speed){
+    const sp = speed*(m/760 + .4);
+    for (let i = 0; i < parts.length; i++){ const p = parts[i], a = ang(p.x,p.y), nx = p.x + Math.cos(a)*sp*2, ny = p.y + Math.sin(a)*sp*2;
+      pc.globalAlpha = p.a; pc.strokeStyle = p.col; pc.lineWidth = p.w; pc.lineCap = 'round'; pc.beginPath(); pc.moveTo(p.x,p.y); pc.lineTo(nx,ny); pc.stroke();
+      p.x = nx; p.y = ny; if (++p.life > p.max || p.x < -30 || p.x > W + 30 || p.y < -30 || p.y > hz + 10) spawn(p); }
+    pc.globalAlpha = 1; }
+
+  /* ----- foreground: hills, village, cypress (painted once, then blitted) ----- */
+  function hatch(ctx, pts, cols, n, len, w){ for (let i = 0; i < n; i++){ const p = pts[Math.random()*pts.length|0]; ctx.strokeStyle = cols[Math.random()*cols.length|0]; ctx.lineWidth = w*rnd(.6,1.4); ctx.globalAlpha = rnd(.35,.8); ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.quadraticCurveTo(p[0] + rnd(-len,len), p[1] - rnd(0,len), p[0] + rnd(-len,len)*1.5, p[1] + rnd(-len,len)*.5); ctx.stroke(); } ctx.globalAlpha = 1; }
+  function buildForeground(){
+    const off = document.createElement('canvas'); off.width = W*fdpr; off.height = H*fdpr; const c = off.getContext('2d'); c.setTransform(fdpr,0,0,fdpr,0,0); c.lineCap = 'round';
+    const hill = (base, amp, f, ph, fill, cols) => { const pts = []; c.beginPath(); c.moveTo(0,H);
+      for (let x = 0; x <= W + 12; x += 12){ const y = base + Math.sin(x*f + ph)*amp + Math.sin(x*f*2.3 + ph*1.7)*amp*.35; c.lineTo(x,y); pts.push([x, y + rnd(0,(H - y)*.5)]); }
+      c.lineTo(W,H); c.closePath(); c.fillStyle = fill; c.fill(); hatch(c, pts, cols, Math.round(W*H/900), m*.03, m*.007); };
+    hill(hz + m*.01, m*.05, .006, 1, '#183a86', ['#1f4aa3','#12306e','#2a5cb8','#0f2a64']);
+    hill(hz + m*.09, m*.045, .008, 3, '#0f2a66', ['#16398a','#0a1f52','#1c47a0']);
+    // village
+    wins = []; const vy = H*.9, houses = Math.round(W/(m*.06));
+    c.fillStyle = '#0a1233'; c.fillRect(0, vy, W, H - vy);
+    for (let i = 0; i < houses; i++){ const x = (i + rnd(.1,.8))*W/houses, w = m*rnd(.04,.075), h = m*rnd(.03,.06);
+      c.fillStyle = ['#0c1a45','#0a1538','#101f50'][i%3]; c.fillRect(x, vy - h, w, h + 4);
+      c.beginPath(); c.moveTo(x - 3, vy - h); c.lineTo(x + w/2, vy - h - m*.025); c.lineTo(x + w + 3, vy - h); c.closePath(); c.fillStyle = '#081030'; c.fill();
+      if (Math.random() < .8) wins.push({x:x + w*rnd(.2,.55), y:vy - h*rnd(.7,.35), s:m*.012, p:rnd(0,6.28)}); }
+    const cx = W*.64; c.fillStyle = '#0a1436'; c.fillRect(cx - m*.017, vy - m*.1, m*.034, m*.1 + 4);
+    c.beginPath(); c.moveTo(cx - m*.022, vy - m*.1); c.lineTo(cx, vy - m*.22); c.lineTo(cx + m*.022, vy - m*.1); c.closePath(); c.fill();
+    // cypress
+    const tx = W*.15, th = H*.62, tw = Math.max(m*.1, 56), top = H - th, pts = [];
+    c.beginPath(); c.moveTo(tx - tw*.4, H);
+    for (let k = 0; k <= 24; k++){ const u = k/24, y = H - u*th, wob = Math.sin(u*9 + 1)*tw*.16*u, wd = tw*(.5*Math.sin(Math.PI*Math.pow(u,.62)) + .05); c.lineTo(tx - wd + wob, y); pts.push([tx + rnd(-wd,wd)*.8 + wob, y]); }
+    for (let k = 24; k >= 0; k--){ const u = k/24, y = H - u*th, wob = Math.sin(u*9 + 1)*tw*.16*u, wd = tw*(.5*Math.sin(Math.PI*Math.pow(u,.62)) + .05); c.lineTo(tx + wd + wob, y); pts.push([tx + rnd(-wd,wd)*.8 + wob, y]); }
+    c.closePath(); c.fillStyle = '#06110d'; c.fill(); hatch(c, pts, ['#0e2a1c','#173d29','#050c09','#27533a','#0b1e15'], Math.round(th*tw/90), tw*.5, m*.006);
+    fgImg = off;
+  }
+
+  function drawStars(){
+    smallStars.forEach(s => { const a = .35 + .65*Math.max(0, Math.sin(t*s.s + s.p)); fc.fillStyle = 'rgba(255,246,210,' + a + ')'; fc.beginPath(); fc.arc(s.x, s.y, s.r, 0, 7); fc.fill(); });
+    bigStars.forEach(s => { const tw = .8 + .2*Math.sin(t*1.5 + s.p), core = s.warm ? '255,230,120' : '255,250,225';
+      const g = fc.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r*3.8); g.addColorStop(0, 'rgba(' + core + ',' + (.85*tw) + ')'); g.addColorStop(.4, 'rgba(255,226,110,' + (.28*tw) + ')'); g.addColorStop(1, 'rgba(255,226,110,0)');
+      fc.fillStyle = g; fc.beginPath(); fc.arc(s.x, s.y, s.r*3.8, 0, 7); fc.fill();
+      for (let k = 1; k <= 3; k++){ fc.beginPath(); fc.arc(s.x, s.y, s.r*(1 + k*.7 + .12*Math.sin(t*1.2 + k + s.p)), 0, 7); fc.strokeStyle = 'rgba(255,238,160,' + (.34*tw/k) + ')'; fc.lineWidth = m*.004*(4-k)/2 + .8; fc.stroke(); }
+      fc.beginPath(); fc.arc(s.x, s.y, s.r*.55, 0, 7); fc.fillStyle = 'rgba(' + core + ',1)'; fc.fill(); });
+  }
+  function drawMoon(){ const x = W*.86, y = H*.15, r = m*.062, pulse = 1 + Math.sin(t*1.1)*.04;
+    for (let k = 4; k >= 1; k--){ fc.beginPath(); fc.arc(x, y, r*(1 + k*.5)*pulse, 0, 7); fc.strokeStyle = 'rgba(255,170,60,' + (.16 - k*.025) + ')'; fc.lineWidth = m*.012; fc.stroke(); }
+    const g = fc.createRadialGradient(x, y, r*.8, x, y, r*3); g.addColorStop(0,'rgba(255,200,90,.35)'); g.addColorStop(1,'rgba(255,200,90,0)'); fc.fillStyle = g; fc.beginPath(); fc.arc(x, y, r*3, 0, 7); fc.fill();
+    fc.save(); fc.beginPath(); fc.rect(0,0,W,H); fc.arc(x + r*.62, y - r*.18, r*.9, 0, 7, true); fc.clip(); fc.beginPath(); fc.arc(x, y, r, 0, 7); fc.fillStyle = '#ffcf58'; fc.fill(); fc.restore(); }
+
+  function frame(now){
+    if (run !== skyRun) return;
+    if (now - last < 30){ requestAnimationFrame(frame); return; }
+    const dt = Math.min(.08, (now - last)/1000 || .03); last = now; t += dt;
+    pc.globalAlpha = .07; pc.fillStyle = baseGrad; pc.fillRect(0,0,W,hz*1.05); pc.globalAlpha = 1;   // old strokes slowly dissolve, new ones paint over
+    stepParts(1);
+    fc.clearRect(0,0,W,H); drawStars(); drawMoon();
+    fc.drawImage(fgImg, 0, 0, W, H);
+    wins.forEach(w => { const a = .65 + .3*Math.sin(t*1.3 + w.p); const g = fc.createRadialGradient(w.x, w.y, 0, w.x, w.y, w.s*3); g.addColorStop(0, 'rgba(255,205,90,' + a + ')'); g.addColorStop(1, 'rgba(255,190,70,0)'); fc.fillStyle = g; fc.beginPath(); fc.arc(w.x, w.y, w.s*3, 0, 7); fc.fill(); fc.fillStyle = 'rgba(255,225,130,' + (a + .1) + ')'; fc.fillRect(w.x - w.s*.5, w.y - w.s*.5, w.s, w.s); });
+    if (!still) requestAnimationFrame(frame);
+  }
+  setup(); requestAnimationFrame(frame);
+  let rs; window.addEventListener('resize', () => { clearTimeout(rs); rs = setTimeout(() => { if (run === skyRun){ setup(); } }, 250); });
+}
+
+/* ---------- the street: a painted night street with strings of flags (one letter each) ----------
+   Shown after the camera zooms from the starry sky into the village. Brush-stroke buildings, cobbles,
+   glowing windows and lanterns in the same palette as the sky, with the proposal on the flags. */
+let streetRun = 0, STREET = null;
+/* Everything heavy (thousands of brush strokes, cobbles, the flag strings, every flag, the glow sprites) is painted
+   once, ahead of time, in small chunks. Each frame then only copies the finished street and stamps a few
+   pre-rendered sprites (window/lantern glows, the flags), so there are no gradients or paths built per frame. */
+function makeStreet(F){
+  const run = ++streetRun, cv = $('#street'), ctx = cv.getContext('2d'), still = matchMedia('(prefers-reduced-motion: reduce)').matches, rnd = (a,b) => a + Math.random()*(b-a);
+  const BLUES = ['#0a1a4f','#102a73','#16388a','#1c46a0','#244fb0','#2d5fc4','#0d2260'], WARM = ['#ffe27a','#ffd24a','#ffc14d','#fff0b0'];
+  const FLAGS = [['#ff6b97','#fff'], ['#ffd166','#0b1646'], ['#f6efdc','#0b1646'], ['#5fb7ea','#0b1646'], ['#e8456f','#fff'], ['#ffb199','#0b1646']];
+  let W, H, m, dpr, bg, bc, wins, lamps, rows, cw, cx0, cx1, yBase, glowW, glowL, revealAt = Infinity, doneCalled = false, total = 0, skyY = 1, stillDrawn = false, built = false;
+
+  function brush(c, x, y, len, w, ang, col, a){ c.strokeStyle = col; c.globalAlpha = a; c.lineWidth = w; c.lineCap = 'round'; c.beginPath(); c.moveTo(x,y);
+    c.quadraticCurveTo(x + Math.cos(ang + .5)*len*.5, y + Math.sin(ang + .5)*len*.5, x + Math.cos(ang)*len, y + Math.sin(ang)*len); c.stroke(); c.globalAlpha = 1; }
+  function facade(c, x0, x1, yTop, yBot){
+    const seg = m*.17, tops = []; for (let x = x0; x < x1; x += seg) tops.push([x, yTop + rnd(0, m*.2)]);
+    c.save(); c.beginPath(); c.moveTo(x0, yBot); tops.forEach(([x,y]) => { c.lineTo(x, y); c.lineTo(Math.min(x1, x + seg), y); }); c.lineTo(x1, yBot); c.closePath();
+    const g = c.createLinearGradient(x0,0,x1,0); g.addColorStop(0,'#091748'); g.addColorStop(1,'#15338f'); c.fillStyle = g; c.fill(); c.clip();
+    const n = (x1 - x0)*(yBot - yTop)/140; for (let i = 0; i < n; i++) brush(c, rnd(x0,x1), rnd(yTop,yBot), rnd(m*.025,m*.07), rnd(m*.007,m*.016), -1.57 + rnd(-.45,.45), BLUES[Math.random()*BLUES.length|0], rnd(.3,.8));
+    tops.forEach(([x,y]) => { c.fillStyle = '#050d2e'; c.fillRect(x - 1, y - m*.014, seg + 2, m*.024); for (let k = 0; k < 8; k++) brush(c, x + rnd(0,seg), y + rnd(-6,10), rnd(8,20), rnd(2,4), rnd(-.3,.3), '#1b3a97', .7); });
+    const ww = m*.052, wh = m*.078, gx = m*.12, gy = m*.15;
+    for (let y = yTop + m*.24; y < yBot - wh*1.4; y += gy) for (let x = x0 + m*.035; x < x1 - ww; x += gx){
+      if (Math.random() < .1) continue; const lit = Math.random() < .7;
+      c.fillStyle = '#050d2e'; c.fillRect(x - 3, y - 3, ww + 6, wh + 6);
+      c.fillStyle = lit ? WARM[Math.random()*WARM.length|0] : '#12286c'; c.fillRect(x, y, ww, wh);
+      if (lit){ wins.push({x:x + ww/2, y:y + wh/2, r:ww*1.7, p:rnd(0,6.28)}); for (let k = 0; k < 6; k++) brush(c, x + rnd(0,ww), y + rnd(0,wh), rnd(ww*.3,ww*.7), rnd(2,4), rnd(-.4,.4), WARM[Math.random()*WARM.length|0], .7); }
+      c.fillStyle = '#050d2e'; c.fillRect(x + ww/2 - 1.2, y, 2.4, wh); c.fillRect(x, y + wh/2 - 1.2, ww, 2.4); }
+    c.restore(); }
+  function distant(c){ const x0 = cx0 + cw*.12, x1 = cx1 - cw*.12, yb = yBase, n = 6;
+    for (let i = 0; i < n; i++){ const w = (x1 - x0)/n, x = x0 + i*w, h = m*rnd(.07,.13), y = yb - h;
+      c.fillStyle = ['#0a1a50','#0c1f5a','#08153f'][i % 3]; c.fillRect(x, y, w + 1, h);
+      c.beginPath(); c.moveTo(x - 2, y); c.lineTo(x + w/2, y - m*.04); c.lineTo(x + w + 3, y); c.closePath(); c.fillStyle = '#060f33'; c.fill();
+      for (let k = 0; k < 2; k++){ const wx = x + w*(.25 + k*.4), wy = y + h*.35; c.fillStyle = WARM[Math.random()*WARM.length|0]; c.fillRect(wx, wy, w*.16, h*.22); wins.push({x:wx + w*.08, y:wy + h*.11, r:w*.34, p:rnd(0,6.28)}); } }
+    const sx = (x0 + x1)/2; c.fillStyle = '#071142'; c.fillRect(sx - m*.012, yb - m*.24, m*.024, m*.24); c.beginPath(); c.moveTo(sx - m*.02, yb - m*.24); c.lineTo(sx, yb - m*.34); c.lineTo(sx + m*.02, yb - m*.24); c.fill(); }
+  function road(c){ const g = c.createLinearGradient(0,yBase,0,H); g.addColorStop(0,'#1a3a92'); g.addColorStop(1,'#091850'); c.fillStyle = g; c.fillRect(0, yBase, W, H - yBase);
+    let y = yBase, r = 0; while (y < H){ const k = (y - yBase)/(H - yBase), h = m*(.014 + k*.05), cwid = m*(.04 + k*.1); for (let x = -cwid + (r % 2 ? cwid/2 : 0); x < W + cwid; x += cwid){
+        c.globalAlpha = .9; c.fillStyle = BLUES[Math.random()*BLUES.length|0]; c.beginPath(); c.ellipse(x + cwid/2 + rnd(-2,2), y + h/2, cwid*.46, h*.5, 0, 0, 7); c.fill(); if (Math.random() < .12){ c.fillStyle = 'rgba(255,215,120,.35)'; c.fill(); } }
+      y += h*1.04; r++; } c.globalAlpha = 1; }
+  function lampPost(c, x){ c.fillStyle = '#050d2e'; c.fillRect(x - 3, yBase - m*.22, 6, m*.22); c.fillRect(x - m*.02, yBase - m*.255, m*.04, m*.035); lamps.push({x, y:yBase - m*.238, r:m*.2, p:rnd(0,6.28)}); }
+  function strings(c){ rows.forEach(r => { const xa = cx0 + 2, xb = cx1 - 2;            // the flag strings never move, so they are part of the painted street
+    c.strokeStyle = '#07102e'; c.lineWidth = 2; c.beginPath(); for (let k = 0; k <= 30; k++){ const u = k/30, x = xa + (xb - xa)*u, y = r.y + 4*r.sag*u*(1 - u); k ? c.lineTo(x,y) : c.moveTo(x,y); } c.stroke(); }); }
+  function layoutFlags(){
+    const lines = F.lines.map(s => s.toUpperCase()), nl = lines.length, maxN = Math.max(...lines.map(s => s.length));
+    const top = H*.17, bot = H*.66, gap = nl > 1 ? (bot - top)/(nl - 1) : H, fw = Math.min(cw/(maxN + 1.6), m*.09, 54, (gap - H*.03)/1.32); rows = [];
+    lines.forEach((s, i) => { const y = nl === 1 ? (top + bot)/2 : top + (bot - top)*i/(nl - 1), items = [];
+      [...s].forEach((ch, k) => { if (ch !== ' ') items.push({ch, u:.5 + (k - (s.length - 1)/2)*(fw*1.1)/cw, col:FLAGS[(i*3 + k) % FLAGS.length], p:rnd(0,6.28)}); });
+      rows.push({y, fw, items, sag:H*.04}); });
+    total = 0; rows.forEach(r => r.items.forEach(it => { it.at = total*F.letterMs; total++; })); }
+  function shade(hex){ const n = parseInt(hex.slice(1), 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255, k = .78; return 'rgb(' + (r*k|0) + ',' + (g*k|0) + ',' + (b*k|0) + ')'; }
+  function flagSprite(it, fw){            // each flag is painted once (same drawing as before) at a resolution that stays sharp through the pop-in overshoot
+    const fh = fw*1.28, pad = Math.ceil(fw*.12) + 2, k = dpr*1.35, w = fw + pad*2, h = fh + pad*2;
+    const c = document.createElement('canvas'); c.width = Math.ceil(w*k); c.height = Math.ceil(h*k); const x = c.getContext('2d');
+    x.setTransform(k, 0, 0, k, (pad + fw/2)*k, pad*k);
+    x.beginPath(); x.moveTo(-fw/2, 0); x.lineTo(fw/2, 0); x.lineTo(0, fh); x.closePath();
+    const g = x.createLinearGradient(0,0,0,fh); g.addColorStop(0, it.col[0]); g.addColorStop(1, shade(it.col[0])); x.fillStyle = g; x.fill();
+    x.save(); x.clip(); x.lineCap = 'round'; for (let j = 0; j < 5; j++){ x.strokeStyle = 'rgba(255,255,255,.22)'; x.lineWidth = fw*.07; x.beginPath(); x.moveTo(-fw*.4 + j*fw*.2, fh*.05); x.lineTo(-fw*.3 + j*fw*.15, fh*.7); x.stroke(); } x.restore();
+    x.lineWidth = Math.max(1.4, fw*.045); x.strokeStyle = '#08102f'; x.lineJoin = 'round'; x.stroke();
+    x.fillStyle = it.col[1]; x.font = '700 ' + (fw*.56) + 'px Georgia,"Times New Roman",serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(it.ch, 0, fh*.3);
+    it.spr = c; it.ox = pad + fw/2; it.oy = pad; it.sw = c.width/k; it.sh = c.height/k; }
+  function glowSprite(col){ const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'), g = x.createRadialGradient(64,64,0,64,64,64);
+    g.addColorStop(0, 'rgba(' + col + ',1)'); g.addColorStop(1, 'rgba(' + col + ',0)'); x.fillStyle = g; x.fillRect(0,0,128,128); return c; }
+  function coverDepth(){                  // how far down the street still lets the sky show through (the sky need not be painted below that)
+    const sw = 48, sh = 96, s = document.createElement('canvas'); s.width = sw; s.height = sh; const x = s.getContext('2d', {willReadFrequently:true});
+    x.drawImage(bg, 0, 0, sw, sh); const d = x.getImageData(0, 0, sw, sh).data; let maxY = 0;
+    for (let y = 0; y < sh; y++) for (let i = 0; i < sw; i++) if (d[(y*sw + i)*4 + 3] < 252){ maxY = y + 1; break; }
+    return Math.min(1, (maxY + 2)/sh); }
+
+  const steps = () => [
+    () => { dpr = Math.min(window.devicePixelRatio || 1, 1.5); W = innerWidth; H = innerHeight; m = Math.min(W,H);
+      cw = Math.min(W*.76, 620); cx0 = (W - cw)/2; cx1 = cx0 + cw; yBase = H*.8; wins = []; lamps = [];
+      bg = document.createElement('canvas'); bg.width = Math.round(W*dpr); bg.height = Math.round(H*dpr); bc = bg.getContext('2d'); bc.setTransform(dpr,0,0,dpr,0,0);
+      layoutFlags(); distant(bc); },
+    () => facade(bc, -m*.1, cx0 + cw*.03, H*.1, yBase),
+    () => facade(bc, cx1 - cw*.03, W + m*.1, H*.06, yBase),
+    () => { road(bc); lampPost(bc, cx0 + cw*.1); lampPost(bc, cx1 - cw*.1); strings(bc); },
+    () => { glowW = glowW || glowSprite('255,205,90'); glowL = glowL || glowSprite('255,196,92'); rows.forEach(r => r.items.forEach(it => flagSprite(it, r.fw))); },
+    () => { skyY = coverDepth(); cv.width = bg.width; cv.height = bg.height; built = true; stillDrawn = false; }
+  ];
+
+  function flag(it, x, y, fw, now){
+    const age = still ? 1e9 : now - revealAt - it.at; if (age < 0) return;
+    const p = Math.min(1, age/520), s = p < 1 ? 1 + 2.2*Math.pow(p - 1, 3) + 1.2*Math.pow(p - 1, 2) : 1;   // pop in with a little overshoot
+    const sway = still ? 0 : Math.sin(now/700 + it.p)*.09, c = Math.cos(sway)*s*dpr, sn = Math.sin(sway)*s*dpr;
+    ctx.setTransform(c, sn, -sn, c, x*dpr, (y - (1 - Math.min(1,p*1.6))*fw*1.2)*dpr); ctx.drawImage(it.spr, -it.ox, -it.oy, it.sw, it.sh); }
+  function frame(now){
+    if (run !== streetRun || !built) return;
+    if (still){ if (stillDrawn) return; stillDrawn = true; }
+    ctx.setTransform(1,0,0,1,0,0); ctx.globalCompositeOperation = 'copy'; ctx.drawImage(bg, 0, 0); ctx.globalCompositeOperation = 'source-over';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    for (const w of wins){ ctx.globalAlpha = still ? .28 : .22 + .12*Math.sin(now/900 + w.p); ctx.drawImage(glowW, w.x - w.r, w.y - w.r, w.r*2, w.r*2); }
+    for (const l of lamps){ const f = still ? .6 : .55 + .15*Math.sin(now/400 + l.p) + .06*Math.sin(now/130 + l.p*2); ctx.globalAlpha = f*.75; ctx.drawImage(glowL, l.x - l.r, l.y - l.r, l.r*2, l.r*2); }
+    ctx.globalAlpha = 1; ctx.fillStyle = '#fff1b8'; ctx.beginPath(); for (const l of lamps){ ctx.moveTo(l.x + m*.012, l.y); ctx.arc(l.x, l.y, m*.012, 0, 7); } ctx.fill();
+    for (const r of rows){ const xa = cx0 + 2, xb = cx1 - 2; for (const it of r.items) flag(it, xa + (xb - xa)*it.u, r.y + 4*r.sag*it.u*(1 - it.u), r.fw, now); }
+    ctx.setTransform(1,0,0,1,0,0);
+    if (!doneCalled && now > revealAt + total*F.letterMs + 600){ doneCalled = true; F.onRevealed && F.onRevealed(); }
+  }
+  let rs; window.addEventListener('resize', () => { clearTimeout(rs); rs = setTimeout(() => { if (run === streetRun){ built = false; steps().forEach(f => f()); frame(performance.now()); } }, 250); });
+  return { steps, frame, cover: () => skyY, begin(t0){ revealAt = t0 + F.zoomStartMs + F.zoomMs + 500; F.revealAt = () => revealAt; } };
+}
+function prepareStreet(F){
+  if (prepareStreet.p) return prepareStreet.p;
+  STREET = makeStreet(F); const st = STREET.steps(); let i = 0;
+  return prepareStreet.p = new Promise(res => (function next(){ if (i < st.length){ st[i++](); nextTask(next); } else res(); })());
+}
+
+/* ---------- the finale: prepared ahead of time, then played by ONE animation loop ---------- */
+function prepareFinale(){
+  if (prepareFinale.p) return prepareFinale.p;
+  const F = CONFIG.finale, dpr = window.devicePixelRatio || 1;
+  const hearts = new Promise(res => { let i = 0; (function next(){ if (i < F.hearts.length){ const h = F.hearts[i++]; SIZES.forEach(s => sprite(h, s, dpr)); nextTask(next); } else res(); })(); });
+  return prepareFinale.p = prepareSky().then(ok => prepareStreet(F).then(() => hearts).then(() => ok));
+}
+function cubicBezier(x1, y1, x2, y2){       // the same curve the old CSS transition used
+  const B = (a, b, t) => 3*a*t*(1 - t)*(1 - t) + 3*b*t*t*(1 - t) + t*t*t;
+  return x => { if (x <= 0) return 0; if (x >= 1) return 1; let lo = 0, hi = 1, t = x; for (let i = 0; i < 22; i++){ t = (lo + hi)/2; if (B(x1, x2, t) < x) lo = t; else hi = t; } return B(y1, y2, t); };
+}
+function playFinale(F, glOK){
+  const t0 = performance.now(), ZOOM = 2.7, ease = cubicBezier(.5,.02,.2,1), still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const st = STREET || {begin(){}, frame(){}, cover: () => 1}, scv = $('#street'), clamp = v => v < 0 ? 0 : v > 1 ? 1 : v;
+  let zoom2D = false, rained = false, op = -1, sc = -1;
+  const go2D = () => { skyTo2D(); document.querySelectorAll('.czoom').forEach(e => e.style.transitionDuration = '1.2s,' + F.zoomMs/1000 + 's'); };
+  if (!glOK) go2D();
+  else if (SKYGL) SKYGL.onLost = () => { SKYGL = null; go2D(); zoom2D = false; };
+  document.body.classList.add('skyon');              // 1. the starry night fades in
+  st.begin(t0);
+  (function loop(now){
+    const e = now - t0;
+    // 2. the camera moves in toward the village: eased, time-based, rendered inside the shader so every frame is sharp
+    const zp = still ? 0 : clamp((e - F.zoomStartMs)/F.zoomMs), zoom = Math.pow(ZOOM, ease(zp));
+    // 3. the street dissolves in while the camera is still moving, and keeps gliding forward a little until it settles
+    const d = clamp((e - F.zoomStartMs - .55*F.zoomMs)/(.45*F.zoomMs + 200)), o = d*d*(3 - 2*d), s = still ? 1 : 1 - .07*Math.pow(1 - d, 3);
+    if (o !== op){ scv.style.opacity = o.toFixed(4); op = o; }
+    if (s !== sc){ scv.style.transform = s < 1 ? 'scale(' + s.toFixed(4) + ')' : 'none'; sc = s; }
+    if (SKYGL) SKYGL.frame(now, zoom, o >= 1 && s >= 1 ? st.cover() : 1);
+    else if (!zoom2D && !still && e >= F.zoomStartMs){ zoom2D = true; document.body.classList.add('zoom'); }
+    if (o > 0) st.frame(now);
+    if (!rained && e >= F.zoomStartMs + F.zoomMs + 400){ rained = true; rain(F.hearts, {loop:true, count:24}); }   // 4. hearts start falling as the flags pop in
+    requestAnimationFrame(loop);
+  })(t0);
+}
+
+function buildKb(box, onKey){
+  box.innerHTML = '';
+  ['QWERTYUIOP','ASDFGHJKL','↵ZXCVBNM⌫'].forEach(r => {
+    const row = el('div','kbrow');
+    [...r].forEach(k => {
+      const b = el('button','key' + ('↵⌫'.includes(k) ? ' wide' : ''), k === '↵' ? 'ENTER' : k);
+      b.dataset.k = k;
+      b.onclick = () => { b.blur(); onKey(k === '↵' ? 'Enter' : k === '⌫' ? 'Backspace' : k); };
+      row.append(b);
+    });
+    box.append(row);
+  });
+}
+document.addEventListener('keydown', e => {
+  if (!activeKey || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (/^[a-zA-Z]$/.test(e.key)) activeKey(e.key.toUpperCase());
+  else if (['Enter','Backspace'].includes(e.key)) { e.preventDefault(); activeKey(e.key); }
+});
+
+const INIT = {
+  intro(){
+    const box = $('#nameTiles'), tr = el('div','trow'); box.style.setProperty('--n', 5); box.style.setProperty('--rows', 1);
+    [...(CONFIG.herName || 'HELLO').toUpperCase().slice(0,7)].forEach((ch,i) => { const t = el('div','tile correct', ch); tr.append(t); });
+    box.append(tr);
+    $('#startBtn').onclick = () => { loadSongs(); show('wordle'); setTimeout(prepareFinale, 400); };   // get the finale ready in the background while she plays
+  },
+
+  /* ---------------- WORDLE ---------------- */
+  wordle(){
+    const ans = CONFIG.wordle.answer.toUpperCase(), n = ans.length, R = 6;
+    const board = $('#wBoard'); board.style.setProperty('--n', n);
+    let row = 0, cur = '', busy = false, rows = [];
+    function build(){ board.innerHTML = ''; rows = []; row = 0; cur = '';
+      for (let r = 0; r < R; r++){ const tr = el('div','trow'); const ts = []; for (let i = 0; i < n; i++){ const t = el('div','tile'); tr.append(t); ts.push(t); } board.append(tr); rows.push({tr, ts}); } }
+    function paint(){ rows[row].ts.forEach((t,i) => { t.textContent = cur[i] || ''; t.classList.toggle('filled', !!cur[i]); }); }
+    function score(g){ const res = Array(n).fill('absent'), cnt = {};
+      for (let i = 0; i < n; i++){ if (g[i] === ans[i]) res[i] = 'correct'; else cnt[ans[i]] = (cnt[ans[i]]||0) + 1; }
+      for (let i = 0; i < n; i++){ if (res[i] !== 'correct' && cnt[g[i]] > 0){ res[i] = 'present'; cnt[g[i]]--; } }
+      return res; }
+    function submit(){
+      busy = true; const g = cur, res = score(g), ts = rows[row].ts;
+      ts.forEach((t,i) => setTimeout(() => { t.classList.add('flip'); setTimeout(() => t.classList.add(res[i]), 250); }, i*280));
+      setTimeout(() => {
+        [...g].forEach((ch,i) => { const k = $(`#wKb [data-k="${ch}"]`); if (!k) return;
+          if (res[i] === 'correct') k.className = 'key correct';
+          else if (res[i] === 'present' && !k.classList.contains('correct')) k.className = 'key present';
+          else if (res[i] === 'absent' && !k.classList.contains('correct') && !k.classList.contains('present')) k.className = 'key absent'; });
+        if (g === ans) return dogMoment();
+        row++; cur = '';
+        if (row === R){ flash('#wMsg', CONFIG.wordle.hint || 'So close. Try again!', 0); setTimeout(() => { build(); busy = false; }, 1600); }
+        else busy = false;
+      }, n*280 + 400);
+    }
+    KEYS.wordle = activeKey = k => {
+      if (busy) return;
+      if (k === 'Backspace') cur = cur.slice(0,-1);
+      else if (k === 'Enter'){ if (cur.length < n){ flash('#wMsg','Not enough letters'); rows[row].tr.classList.remove('shake'); void rows[row].tr.offsetWidth; rows[row].tr.classList.add('shake'); } else return submit(); }
+      else if (k.length === 1 && cur.length < n){ cur += k; const t = rows[row].ts[cur.length-1]; t.classList.remove('pop'); void t.offsetWidth; t.classList.add('pop'); }
+      paint();
+    };
+    build(); buildKb($('#wKb'), k => activeKey && activeKey(k));
+  },
+
+  /* ---------------- THE QUESTION ---------------- */
+  finale(){
+    const F = CONFIG.finale;
+    document.body.classList.add('night');
+    F.onRevealed = () => rain(F.hearts, {loop:true, count:60});       // a bigger heart shower once the banner is complete
+    F.hearts.forEach(h => SIZES.forEach(s => sprite(h, s, window.devicePixelRatio || 1)));   // already cached if prepared at Play; else done now, before anything moves
+    // normally everything was prepared while she played; if not (e.g. ?stage=finale) it is prepared now, then played
+    prepareFinale().then(ok => playFinale(F, ok), err => { console.warn(err); playFinale(F, false); });
+  }
+};
+
+// For your own testing: add ?stage=finale to the address to jump straight to the question.
+const jump = new URLSearchParams(location.search).get('stage');
+show(ORDER.includes(jump) ? jump : 'intro');
+</script>
+</body>
+</html>
