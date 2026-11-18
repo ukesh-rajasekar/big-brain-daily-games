@@ -90,13 +90,14 @@ const CONFIG = {
   #lead.on{opacity:1}
   #rain{position:fixed;inset:0;pointer-events:none;width:100%;height:100%;z-index:46}
   #sky,#skyfg{position:fixed;inset:0;width:100%;height:100%;z-index:0;opacity:0;pointer-events:none;transition:opacity 1.2s ease}
-  #skyfg{z-index:1}
+  #skyfg{z-index:1;display:none}
+  #skyfg.czoom{display:block}
   body.night{background:#050a1c;color:#fff}
-  body.night #sky,body.night #skyfg{opacity:1}
-  #sky,#skyfg{transform-origin:63% 88%;transition:opacity 1.2s ease,transform 4.2s cubic-bezier(.5,.02,.2,1)}
-  body.zoom #sky,body.zoom #skyfg{transform:scale(2.7)}
-  #street{position:fixed;inset:0;width:100%;height:100%;z-index:1;opacity:0;pointer-events:none;transition:opacity 1.8s ease}
-  #street.on{opacity:1}
+  body.skyon #sky,body.skyon #skyfg{opacity:1}
+  /* the WebGL sky moves its camera inside the shader (crisp at every zoom level); only the 2D fallback is zoomed with CSS */
+  .czoom{transform-origin:63% 88%;transition:opacity 1.2s ease,transform 4.2s cubic-bezier(.5,.02,.2,1)}
+  body.zoom .czoom{transform:scale(2.7)}
+  #street{position:fixed;inset:0;width:100%;height:100%;z-index:1;opacity:0;pointer-events:none;transform-origin:63% 100%;will-change:opacity,transform}
   #question{position:relative}
   #question::before{content:'';position:absolute;inset:-48px -36px;background:radial-gradient(ellipse at center,rgba(3,8,30,.6),rgba(3,8,30,0) 72%);z-index:-1;pointer-events:none}
   body.night header{background:transparent;border-color:transparent}
@@ -208,16 +209,22 @@ function sprite(ch, s, dpr){            // each emoji is drawn once into a tiny 
 function rain(chars, opt){
   opt = opt || {}; const list = Array.isArray(chars) ? chars : [chars];
   const cv = $('#rain'), ctx = cv.getContext('2d'), dpr = window.devicePixelRatio || 1, W = innerWidth, H = innerHeight;
-  cv.width = W*dpr; cv.height = H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); cancelAnimationFrame(rainId);
+  if (cv.width !== Math.round(W*dpr) || cv.height !== Math.round(H*dpr)){ cv.width = Math.round(W*dpr); cv.height = Math.round(H*dpr); }
+  cancelAnimationFrame(rainId);
   const mk = fresh => ({ch:list[Math.random()*list.length|0], x:Math.random()*W, y: fresh ? -30 : -30 - Math.random()*H*.9, s:SIZES[Math.random()*SIZES.length|0], vy:2.2 + Math.random()*3.4, vx:-.6 + Math.random()*1.2, r:Math.random()*6.28, vr:-.04 + Math.random()*.08});
   const P = Array.from({length: opt.count || 48}, () => mk(false));
-  rain.stop = () => { cancelAnimationFrame(rainId); ctx.clearRect(0,0,W,H); };
-  (function loop(){
-    ctx.clearRect(0,0,W,H); let alive = 0;
-    P.forEach((p,i) => { p.y += p.vy; p.x += p.vx; p.r += p.vr;
-      if (p.y > H + 50){ if (opt.loop) P[i] = mk(true); } else alive++;
-      const sp = sprite(p.ch, p.s, dpr), d = p.s*1.4; ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.r); ctx.drawImage(sp, -d/2, -d/2, d, d); ctx.restore(); });
-    if (alive || opt.loop) rainId = requestAnimationFrame(loop); else ctx.clearRect(0,0,W,H);
+  P.forEach(p => sprite(p.ch, p.s, dpr));                                    // draw the emoji sprites now, not mid-animation
+  const clear = () => { ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cv.width,cv.height); };
+  rain.stop = () => { cancelAnimationFrame(rainId); clear(); };
+  let last = 0;
+  (function loop(now){
+    const k = last && now ? Math.min(3, (now - last)/16.67) : 1; last = now || 0;   // time-based: same speed at 30, 60 or 120 fps
+    clear(); let alive = 0;
+    for (let i = 0; i < P.length; i++){ let p = P[i]; p.y += p.vy*k; p.x += p.vx*k; p.r += p.vr*k;
+      if (p.y > H + 50){ if (opt.loop) p = P[i] = mk(true); } else alive++;
+      const sp = sprite(p.ch, p.s, dpr), d = p.s*1.4, c = Math.cos(p.r)*dpr, s = Math.sin(p.r)*dpr;
+      ctx.setTransform(c, s, -s, c, p.x*dpr, p.y*dpr); ctx.drawImage(sp, -d/2, -d/2, d, d); }
+    if (alive || opt.loop) rainId = requestAnimationFrame(loop); else clear();
   })();
 }
 
@@ -252,13 +259,29 @@ document.addEventListener('pointerdown', () => { const st = curPlayer(); if (st 
 /* ---------- live painted starry night ----------
    Thousands of brush strokes ride a swirling flow field (big spiral currents, like oil paint in motion),
    with haloed stars, a crescent moon, a cypress tree and a village with lit windows on top. */
-let skyRun = 0;
-function startSky(){
-  if (startSky.started) return; startSky.started = true;
-  let ok = false;
-  try { ok = startSkyGL(); } catch (e) { console.warn('starry night: WebGL unavailable, using 2D painter', e); ok = false; }
-  if (!ok){ const old = $('#sky'); if (old.dataset.gl){ const n = old.cloneNode(false); delete n.dataset.gl; old.replaceWith(n); } startSky2D(); }
+let skyRun = 0, SKYGL = null;
+/* run fn in a fresh task soon (a MessageChannel is not clamped/throttled like setTimeout), so long preparation is split into short tasks */
+const nextTask = (() => { const ch = new MessageChannel(), q = []; ch.port1.onmessage = () => { const f = q.shift(); if (f) f(); }; return f => { q.push(f); ch.port2.postMessage(0); }; })();
+/* Heavy one-off work (shader compile + link on a background thread via KHR_parallel_shader_compile, a warm-up draw,
+   a tiny GPU benchmark that picks the render resolution) happens here, ahead of time: it is started when she taps
+   Play, so by the time the finale starts the sky is ready and the first frame costs no more than any other frame.
+   Resolves true when the WebGL sky is ready, false when the 2D painter must be used. */
+function prepareSky(){
+  if (prepareSky.p) return prepareSky.p;
+  return prepareSky.p = new Promise(res => {
+    let settled = false; const done = ok => { if (!settled){ settled = true; if (!ok) SKYGL = null; res(ok); } };
+    try { SKYGL = createSkyGL(done); if (!SKYGL) done(false); }
+    catch (e) { console.warn('starry night: WebGL unavailable, using 2D painter', e); done(false); }
+    let shown = 0; const wd = setInterval(() => {            // watchdog: 8s of visible time without being ready -> 2D painter (hidden tabs do not count)
+      if (settled) return clearInterval(wd);
+      if (!document.hidden && (shown += 500) >= 8000){ clearInterval(wd); console.warn('starry night: WebGL too slow to start, using 2D painter'); if (SKYGL) SKYGL.destroy(); done(false); } }, 500);
+  });
 }
+function skyTo2D(){                       // swap to the 2D painter (no WebGL, failed compile, or lost context)
+  const old = $('#sky'); if (old.dataset.gl){ const n = old.cloneNode(false); delete n.dataset.gl; old.replaceWith(n); }
+  $('#sky').classList.add('czoom'); $('#skyfg').classList.add('czoom'); startSky2D();
+}
+function startSky(){ prepareSky().then(ok => { if (!ok) skyTo2D(); document.body.classList.add('skyon'); }); }
 
 /* ----- WebGL painter: a fragment shader paints every pixel as layered, impasto brush strokes that ride a
    swirling flow field (great vortices + spinning star halos), with parallax hills, a lit village and a flame-like cypress. */
@@ -273,8 +296,15 @@ uniform vec2 uCam; uniform vec3 uPtr;
 uniform vec4 uV[5]; uniform vec4 uS[11]; uniform vec3 uMoon;
 uniform vec4 uG;  /* horizon y, wave y, cypress x, cypress height */
 uniform vec4 uG2; /* cypress width, church x, -, - */
+uniform float uZoom; uniform vec2 uZO;   /* camera zoom (1 = whole painting) and the point it moves toward */
 const vec2 LGT = vec2(-0.6, 0.8);
+/* how strongly each depth layer follows the camera: far sky least, cypress (closest) most, for a real dolly-in parallax */
+const float KS = .82, KF = .93, KN = 1., KC = 1.3;
 float gCx, gHw;
+vec2 basePt(vec2 fc){ return (fc - .5*uR)/min(uR.x, uR.y)*uZ; }
+vec2 zoomed(vec2 p, float k){ return uZO + (p - uZO)/(1. + (uZoom - 1.)*k); }
+/* sky-layer point -> pixel (inverse of zoomed(basePt(fc), KS) + uCam*.3) */
+vec2 skyPx(vec2 ps){ vec2 q = ps - uCam*.3; q = uZO + (q - uZO)*(1. + (uZoom - 1.)*KS); return q/uZ*min(uR.x, uR.y) + .5*uR; }
 
 float h12(vec2 p){ vec3 p3 = fract(vec3(p.xyx)*.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y)*p3.z); }
 vec4 h42(vec2 p){ vec4 p4 = fract(vec4(p.xyxy)*vec4(.1031,.1030,.0973,.1099)); p4 += dot(p4, p4.wzxy + 33.33); return fract((p4.xxyz + p4.yzzw)*p4.zywx); }
@@ -285,7 +315,7 @@ float hillF(float x){ return uG.x + .03 + .028*sin(x*2.3 + .6) + .013*sin(x*6.1 
 float hillN(float x){ return uG.x - .065 + .02*sin(x*3.7 + 2.5) + .008*sin(x*11. + 1.); }
 `;
 /* pass 1 (low resolution): the sky's colour field and its flow direction, rendered to two small textures */
-const SKY_FIELD = `
+const SKY_FLOW = `
 vec2 flow(vec2 p){
   vec2 v = vec2(1., .3*sin(p.x*2.7 + uF*.13) + .22*sin(p.y*4. - p.x*1.3 + uF*.1));
   for (int i = 0; i < 5; i++){ vec4 o = uV[i]; vec2 d = p - o.xy; float r2 = dot(d,d)/(o.z*o.z);
@@ -295,7 +325,8 @@ vec2 flow(vec2 p){
   vec2 d = p - uPtr.xy; v += uPtr.z*3.*vec2(-d.y, d.x)/.16*exp(-dot(d,d)/.0256);
   return normalize(v + 1e-5);
 }
-
+`;
+const SKY_FIELD = SKY_FLOW + `
 vec3 skyCol(vec2 p){
   float y01 = clamp((p.y - uG.x)/(uE.y - uG.x), 0., 1.);
   vec2 w = p + .07*vec2(vn(p*3.5 + uF*.04) - .5, vn(p*3.5 + 9.1 - uF*.04) - .5);
@@ -333,21 +364,86 @@ vec3 skyCol(vec2 p){
   return c;
 }
 void main(){
-  vec2 p = (gl_FragCoord.xy - .5*uR)/min(uR.x, uR.y)*uZ + uCam*.3;
+  vec2 p = zoomed(basePt(gl_FragCoord.xy), KS) + uCam*.3;
 #ifdef DIR
   gl_FragColor = vec4(flow(p)*.5 + .5, 0., 1.);
 #else
   gl_FragColor = vec4(skyCol(p), 1.);
 #endif
 }`;
-/* pass 2 (full resolution): brush strokes, foreground, stars and moon */
-const SKY_MAIN = `
-uniform sampler2D uCol, uDir;
-vec2 skyUV(vec2 ps){ return ((ps - uCam*.3)/uZ*min(uR.x, uR.y) + .5*uR)/uR; }
-vec3 skyCol(vec2 ps){ return texture2D(uCol, skyUV(ps)).rgb; }
-vec2 flow(vec2 ps){ return normalize(texture2D(uDir, skyUV(ps)).xy*2. - 1. + 1e-4); }
-
+/* pass 2 (full resolution, into a texture): the sky's base colour */
+const SKY_BASE = `
+uniform sampler2D uCol;
+void main(){ gl_FragColor = vec4(texture2D(uCol, gl_FragCoord.xy/uR).rgb*.8, 1.); }`;
+const SKY_TINT = `
 vec3 tint(vec3 c, float j){ return c*(.84 + .32*j) + (j - .5)*vec3(-.05, .02, .07); }
+`;
+/* pass 3: the sky's brush strokes as real geometry. Each stroke is one small quad drawn in priority order with
+   premultiplied blending, instead of every pixel searching 3 layers x 9 neighbouring cells for the top stroke
+   (that search was ~75% of the GPU time). Same stroke shape, bristles, dry-brush tail and colours. */
+const SKY_STROKE_VS = SKY_FLOW + `
+attribute vec4 aC; attribute vec4 aH;
+uniform float uCs, uSpd;
+varying vec2 vL, vP, vCen; varying vec4 vS; varying vec2 vB;
+void main(){
+  vec4 h = aH;
+  float ph = fract(uF*uSpd*(.6 + .8*h.z) + h.w);
+  float life = .5 + .5*sin(3.14159*ph);
+  vec2 c0 = (aC.xy + .5 + (h.xy - .5)*.9)*uCs;
+  vec2 dir = flow(c0);
+  vec2 c = c0 + dir*(ph - .5)*uCs*1.3;
+  vec2 perp = vec2(-dir.y, dir.x);
+  float L = uCs*(.8 + .65*h.z)*life, Wd = uCs*(.24 + .17*h.x), k = (h.y - .5)*.9;
+  vec2 lc = aC.zw*vec2(L, Wd*(1. + abs(k)));
+  vec2 ps = c + dir*lc.x + perp*lc.y;
+  vL = lc; vP = ps; vCen = c; vS = vec4(L, Wd, k, h.y); vB = vec2(h.x, dot(perp, LGT));
+  gl_Position = vec4(skyPx(ps)/uR*2. - 1., 0., 1.);
+}`;
+const SKY_STROKE_FS = SKY_TINT + `
+uniform sampler2D uCol;
+varying vec2 vL, vP, vCen; varying vec4 vS; varying vec2 vB;
+void main(){
+  float u = vL.x/vS.x, v = vL.y/vS.y + vS.z*u*u;
+  float wp = .5 + .5*sqrt(max(0., 1. - u*u));
+  float s = (1. - smoothstep(.8, 1., abs(u)))*(1. - smoothstep(.78, 1., abs(v)/wp));
+  float br = sin(v*16. + vB.x*40. + u*2.5);
+  s *= 1. - smoothstep(.35, 1., u)*(.55 + .45*br)*.7;
+  float lp = vB.y;
+  float sh = 1. + .30*v*lp - .14*v*v + .07*br + .10*pow(max(br, 0.), 6.)*(.4 + .6*max(v*lp, 0.));
+  vec3 col = tint(texture2D(uCol, skyPx(mix(vP, vCen, .85))/uR).rgb, vS.w)*sh;
+  gl_FragColor = vec4(col*s, s);
+}`;
+/* pass 4: star cores, moon and her touch-light, one quad each (premultiplied: rgb = glow*(1-a) + top*a) */
+const SKY_DOT_VS = `
+attribute vec2 a; uniform vec4 uQ; varying vec2 vP;
+void main(){ vP = uQ.xy + a*uQ.z; gl_Position = vec4(skyPx(vP)/uR*2. - 1., 0., 1.); }`;
+const SKY_DOT_FS = `
+uniform vec4 uQ, uQ2; varying vec2 vP;
+void main(){
+  vec2 d = vP - uQ.xy; vec3 add = vec3(0.), top = vec3(0.); float a = 0.;
+  if (uQ2.x < .5){ float r = length(d)/uQ2.w, br = 1. + .14*sin(uT*1.25 + uQ2.y*1.7);
+    vec3 sc = uQ2.z > .5 ? vec3(1.,.86,.45) : vec3(1.,.96,.78);
+    add = sc*(.22*exp(-r*.75)*br + 1.1*exp(-r*r*3.)); a = smoothstep(.55, .38, r); top = vec3(1.,.99,.92); }
+  else if (uQ2.x < 1.5){ float r = length(d)/uMoon.z, br = 1. + .08*sin(uT*.9);
+    add = vec3(1.,.62,.22)*(.14*exp(-r*.9)*br);
+    float disc = smoothstep(1., .93, r), cut = smoothstep(.97, 1.05, length(d - vec2(.48, .2)*uMoon.z)/(uMoon.z*.86));
+    a = disc*cut;
+    if (a > 0.){ float n = vn(d/uMoon.z*vec2(9., 3.) + 4.); top = mix(vec3(1.,.90,.45), vec3(1.,.98,.80), n)*(1. + .08*sin(atan(d.y, d.x)*12.)); } }
+  else add = vec3(1.,.86,.48)*uPtr.z*.28*exp(-dot(d, d)/.012);
+  gl_FragColor = vec4(add*(1. - a) + top*a, a);
+}`;
+/* pass 5a (to screen, everywhere no foreground can be): just the painted sky texture, vignette and grain */
+const SKY_PLAIN = `
+uniform sampler2D uSky;
+void main(){
+  vec2 p = basePt(gl_FragCoord.xy); vec3 col = texture2D(uSky, gl_FragCoord.xy/uR).rgb;
+  vec2 e = p/uE; col *= 1. - .28*smoothstep(.55, 1.5, length(e));
+  col *= .95 + .1*vn(gl_FragCoord.xy*.7);
+  gl_FragColor = vec4(col, 1.);
+}`;
+/* pass 5b (to screen, only inside the band/column where hills, village or cypress can be): the full painter */
+const SKY_MAIN = SKY_TINT + `
+uniform sampler2D uSky;
 
 /* one layer of brush strokes: picks the top-most stroke covering p among the 3x3 neighbouring cells */
 float strokes(vec2 p, vec2 dir, float cs, float seed, float spd, out vec2 cen, out float shade, out float jit){
@@ -374,31 +470,6 @@ float strokes(vec2 p, vec2 dir, float cs, float seed, float spd, out vec2 cen, o
         shade = 1. + .30*v*lp - .14*v*v + .07*br + .10*pow(max(br, 0.), 6.)*(.4 + .6*max(v*lp, 0.)); } }
   }
   return cov;
-}
-
-vec3 paintSky(vec2 p){
-  vec2 dir = flow(p), cen; float sh, j, cov;
-  vec3 col = skyCol(p)*.8;
-  cov = strokes(p, dir, .064, 1.7, .10, cen, sh, j); if (cov > 0.) col = mix(col, tint(skyCol(mix(p, cen, .85)), j)*sh, cov);
-  cov = strokes(p, dir, .042, 7.3, .16, cen, sh, j); if (cov > 0.) col = mix(col, tint(skyCol(mix(p, cen, .85)), j)*sh, cov);
-  cov = strokes(p, dir, .027, 13.1, .24, cen, sh, j); if (cov > 0.) col = mix(col, tint(skyCol(mix(p, cen, .85)), j)*sh, cov);
-  /* glowing star cores */
-  for (int i = 0; i < 11; i++){ vec4 s = uS[i]; vec2 d = p - s.xy; float r = length(d)/s.z;
-    if (r < 7.){ float br = 1. + .14*sin(uT*1.25 + float(i)*1.7);
-      vec3 sc = s.w > .5 ? vec3(1.,.86,.45) : vec3(1.,.96,.78);
-      col += sc*(.22*exp(-r*.75)*br + 1.1*exp(-r*r*3.));
-      col = mix(col, vec3(1.,.99,.92), smoothstep(.55, .38, r)); } }
-  /* crescent moon */
-  { vec2 d = p - uMoon.xy; float r = length(d)/uMoon.z;
-    float br = 1. + .08*sin(uT*.9);
-    col += vec3(1.,.62,.22)*(.14*exp(-r*.9)*br);
-    float disc = smoothstep(1., .93, r), cut = smoothstep(.97, 1.05, length(d - vec2(.48, .2)*uMoon.z)/(uMoon.z*.86));
-    float m = disc*cut;
-    if (m > 0.){ float n = vn(d/uMoon.z*vec2(9., 3.) + 4.);
-      col = mix(col, mix(vec3(1.,.90,.45), vec3(1.,.98,.80), n)*(1. + .08*sin(atan(d.y, d.x)*12.)), m); } }
-  /* light surges where she touches */
-  vec2 dq = p - uPtr.xy; col += vec3(1.,.86,.48)*uPtr.z*.28*exp(-dot(dq,dq)/.012);
-  return col;
 }
 
 vec3 fgCol(int reg, vec2 q){
@@ -468,8 +539,8 @@ float church(vec2 q, out vec3 c){
 }
 
 void main(){
-  vec2 p = (gl_FragCoord.xy - .5*uR)/min(uR.x, uR.y)*uZ;
-  vec2 ps = p + uCam*.3, pf = p + uCam*.55, pn = p + uCam*.8, pc = p + uCam*1.2;
+  vec2 p = basePt(gl_FragCoord.xy);
+  vec2 pf = zoomed(p, KF) + uCam*.55, pn = zoomed(p, KN) + uCam*.8, pc = zoomed(p, KC) + uCam*1.2;
   float cu = clamp((pc.y + uE.y + .04)/uG.w, 1e-4, 1.2);
   gCx = uG.z + sin(cu*7. + 1.)*uG2.x*.18*cu + sin(uT*.45)*.014*cu*cu;
   gHw = uG2.x*(.5*sin(3.14159*pow(min(cu, 1.), .62)) + .05);
@@ -481,7 +552,7 @@ void main(){
   else if (pn.y < hillN(pn.x) + (vn(pn*40.) - .5)*.006) reg = 2;
   else if (pf.y < hillF(pf.x) + (vn(pf*40.) - .5)*.006) reg = 1;
   vec3 col;
-  if (reg == 0) col = paintSky(ps);
+  if (reg == 0) col = texture2D(uSky, gl_FragCoord.xy/uR).rgb;
   else if (reg == 1) col = paintFG(pf, 1);
   else if (reg == 2) col = paintFG(pn, 2);
   else if (reg == 4) col = paintFG(pc, 4);
@@ -491,43 +562,76 @@ void main(){
   gl_FragColor = vec4(col, 1.);
 }`;
 
-function startSkyGL(){
-  if (/[?&]sky=2d\b/.test(location.search)) return false;
+function createSkyGL(onReady){
+  if (/[?&]sky=2d\b/.test(location.search)) return null;
   const cv = $('#sky'), opts = {alpha:false, antialias:false, depth:false, stencil:false, premultipliedAlpha:false, preserveDrawingBuffer:false, powerPreference:'high-performance', failIfMajorPerformanceCaveat:true};
   const gl = cv.getContext('webgl', opts) || cv.getContext('experimental-webgl', opts);
-  if (!gl) return false;
+  if (!gl) return null;
   cv.dataset.gl = '1';
-  const still = matchMedia('(prefers-reduced-motion: reduce)').matches, coarse = matchMedia('(pointer: coarse)').matches;
-  let progs, fbo, U, W, H, fw, fh, q = 1, lost = false;
-  const names = ['uR','uE','uT','uF','uZ','uCam','uPtr','uV','uS','uMoon','uG','uG2','uCol','uDir'];
-  const Vb = new Float32Array(20), Sb = new Float32Array(44);
-  function init(){
-    const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
-      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) || 'shader compile failed'); return s; };
-    const vs = sh(gl.VERTEX_SHADER, 'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}');
-    const mk = src => { const p = gl.createProgram(); gl.attachShader(p, vs); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, src));
-      gl.bindAttribLocation(p, 0, 'a'); gl.linkProgram(p);
-      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p) || 'link failed');
-      const loc = {}; names.forEach(n => loc[n] = gl.getUniformLocation(p, n)); return {p, loc}; };
-    progs = [mk(SKY_HEAD + SKY_FIELD), mk('#define DIR\n' + SKY_HEAD + SKY_FIELD), mk(SKY_HEAD + SKY_MAIN)];
-    fbo = [0, 1].map(() => { const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const ext = gl.getExtension('KHR_parallel_shader_compile');
+  const NAMES = ['uR','uE','uT','uF','uZ','uCam','uPtr','uV','uS','uMoon','uG','uG2','uZoom','uZO','uCol','uSky','uCs','uSpd','uQ','uQ2'];
+  const FULL_VS = 'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}';
+  const DEFS = { field:[FULL_VS, SKY_HEAD + SKY_FIELD], dir:[FULL_VS, '#define DIR\n' + SKY_HEAD + SKY_FIELD], base:[FULL_VS, SKY_HEAD + SKY_BASE],
+                 stroke:[SKY_HEAD + SKY_STROKE_VS, SKY_HEAD + SKY_STROKE_FS], dot:[SKY_HEAD + SKY_DOT_VS, SKY_HEAD + SKY_DOT_FS], plain:[FULL_VS, SKY_HEAD + SKY_PLAIN], comp:[FULL_VS, SKY_HEAD + SKY_MAIN] };
+  let progs = {}, shaders = [], tri, quad, sbuf, ibuf, fbo, layers = [], W, H, U, fw, fh, scale = 0, ready = false, lost = false, alive = true, lostTimer;
+  const Vb = new Float32Array(20), Sb = new Float32Array(44), px1 = new Uint8Array(4), zo = [0, 0];
+  let moon = [0, 0, .062], geo = {};
+
+  /* ---- compile everything first, link everything after, and only then ask for the status (lets the browser do it off the main thread) ---- */
+  function compileAll(){
+    progs = {}; shaders = []; const cache = {};
+    const sh = (type, src) => { const key = type + src; if (cache[key]) return cache[key]; const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); shaders.push(s); return cache[key] = s; };
+    Object.keys(DEFS).forEach(k => { progs[k] = {vs: sh(gl.VERTEX_SHADER, DEFS[k][0]), fs: sh(gl.FRAGMENT_SHADER, DEFS[k][1])}; });
+  }
+  function linkAll(){
+    Object.keys(progs).forEach(k => { const o = progs[k], p = o.p = gl.createProgram(); gl.attachShader(p, o.vs); gl.attachShader(p, o.fs);
+      if (k === 'stroke'){ gl.bindAttribLocation(p, 0, 'aC'); gl.bindAttribLocation(p, 1, 'aH'); } else gl.bindAttribLocation(p, 0, 'a');
+      gl.linkProgram(p); });
+  }
+  const doneQ = (list, fn) => !ext || list.every(o => gl[fn](o, ext.COMPLETION_STATUS_KHR));
+  function finish(){
+    Object.keys(progs).forEach(k => { const o = progs[k];
+      if (!gl.getProgramParameter(o.p, gl.LINK_STATUS) && !gl.isContextLost())
+        throw new Error('sky shader "' + k + '": ' + (gl.getShaderInfoLog(o.vs) || '') + ' ' + (gl.getShaderInfoLog(o.fs) || '') + ' ' + (gl.getProgramInfoLog(o.p) || ''));
+      o.loc = {}; NAMES.forEach(n => o.loc[n] = gl.getUniformLocation(o.p, n)); });
+    const buf = a => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(a), gl.STATIC_DRAW); return b; };
+    tri = buf([-1,-1, 3,-1, -1,3]); quad = buf([-1,-1, 1,-1, -1,1, 1,1]); sbuf = gl.createBuffer(); ibuf = gl.createBuffer();
+    fbo = [0, 1, 2].map(() => { const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       return {tex, fb: gl.createFramebuffer()}; });
-    const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
-    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(0);
   }
-  const each = f => progs.forEach(pr => { gl.useProgram(pr.p); f(pr.loc); });
+
+  /* ---- the brush strokes: one quad per stroke, sorted by priority so the top-most stroke is drawn last ---- */
+  function buildStrokes(){
+    const ex = W/U/2*1.03 + .12, ey = H/U/2*1.03 + .12, defs = [[.064, .10], [.042, .16], [.027, .24]];
+    let seed = 1234567; const r = () => (seed = seed*16807 % 2147483647)/2147483647;
+    const all = []; layers = [];
+    defs.forEach(([cs, spd]) => { const list = [], x0 = Math.floor(-ex/cs) - 2, x1 = Math.ceil(ex/cs) + 2, y0 = Math.floor(-ey/cs) - 2, y1 = Math.ceil(ey/cs) + 2;
+      for (let j = y0; j <= y1; j++) for (let i = x0; i <= x1; i++) list.push([i, j, r(), r(), r(), r(), r()]);
+      list.sort((a, b) => a[6] - b[6]);
+      const n = Math.min(list.length, 16000 - all.length); layers.push({cs, spd, first: all.length, n});
+      for (let k = 0; k < n; k++) all.push(list[k]); });
+    const v = new Float32Array(all.length*32), ix = new Uint16Array(all.length*6), C = [-1,-1, 1,-1, 1,1, -1,1];
+    all.forEach((s, n) => { for (let c = 0; c < 4; c++){ const o = (n*4 + c)*8; v[o] = s[0]; v[o+1] = s[1]; v[o+2] = C[c*2]; v[o+3] = C[c*2+1]; v[o+4] = s[2]; v[o+5] = s[3]; v[o+6] = s[4]; v[o+7] = s[5]; }
+      const b = n*4; ix.set([b, b+1, b+2, b, b+2, b+3], n*6); });
+    gl.bindBuffer(gl.ARRAY_BUFFER, sbuf); gl.bufferData(gl.ARRAY_BUFFER, v, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibuf); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, ix, gl.STATIC_DRAW);
+  }
+
   function layout(){
     W = innerWidth; H = innerHeight; U = Math.min(W, H);
-    const dpr = Math.min(window.devicePixelRatio || 1, 2), budget = coarse ? 6e5 : 8e5;
-    const s = Math.max(.3, Math.min(dpr, Math.sqrt(budget/(W*H)))*q);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (!scale) scale = Math.min(dpr, Math.sqrt(4.5e5/(W*H)));            // first guess; the benchmark below refines it
+    const s = Math.max(.4, Math.min(dpr, scale, Math.sqrt(1.5e6/(W*H))));
     cv.width = Math.max(1, Math.round(W*s)); cv.height = Math.max(1, Math.round(H*s));
     fw = Math.max(1, Math.ceil(cv.width/3)); fh = Math.max(1, Math.ceil(cv.height/3));
-    fbo.forEach(f => { gl.bindTexture(gl.TEXTURE_2D, f.tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, fw, fh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    fbo.forEach((f, i) => { gl.bindTexture(gl.TEXTURE_2D, f.tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, i < 2 ? fw : cv.width, i < 2 ? fh : cv.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
       gl.bindFramebuffer(gl.FRAMEBUFFER, f.fb); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, f.tex, 0);
       if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE && !gl.isContextLost()) throw new Error('sky framebuffer incomplete'); });
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.bindTexture(gl.TEXTURE_2D, null);
     const port = H > W*1.15, P = (fx, fy) => [(fx - .5)*W/U, (.5 - fy)*H/U];
     const vs = port ? [[.55,.27,.24,3.2],[.22,.2,.13,-2.6],[.8,.4,.11,2.2],[.18,.48,.09,-1.8],[.7,.55,.09,-1.6]]
                     : [[.53,.33,.22,3.2],[.27,.24,.13,-2.6],[.84,.48,.11,2.2],[.14,.5,.09,-1.8],[.68,.55,.09,-1.6]];
@@ -535,50 +639,126 @@ function startSkyGL(){
     const ss = [[.12,.12,.026,0],[.31,.08,.02,1],[.45,.18,.024,0],[.66,.09,.022,0],[.93,.3,.025,1],[.37,.4,.018,0],[.06,.38,.02,0],[.75,.32,.02,1],[.58,.05,.017,0],[.2,.29,.018,0],[.7,.2,.019,0]];
     ss.forEach((v, i) => { const [x, y] = P(v[0], port ? v[1]*.85 : v[1]); Sb.set([x, y, v[2]*(port ? 1.15 : 1), v[3]], i*4); });
     const mo = P(port ? .8 : .86, port ? .1 : .14), hz = P(0, port ? .79 : .74)[1], wave = P(0, port ? .4 : .45)[1];
-    progs.forEach((pr, i) => { gl.useProgram(pr.p); const l = pr.loc;
-      gl.uniform2f(l.uR, i < 2 ? fw : cv.width, i < 2 ? fh : cv.height); gl.uniform2f(l.uE, W/U/2, H/U/2);
+    moon = [mo[0], mo[1], .062]; geo = {hz, cyx: P(port ? .1 : .15, 0)[0], cyh: (port ? .56 : .66)*H/U, cyw: Math.max(.1, 56/U), ey: H/U/2}; const o = P(.63, .88); zo[0] = o[0]; zo[1] = o[1];      // the camera moves toward the village (same spot the old CSS zoom used)
+    Object.keys(progs).forEach(k => { const l = progs[k].loc, low = k === 'field' || k === 'dir'; gl.useProgram(progs[k].p);
+      gl.uniform2f(l.uR, low ? fw : cv.width, low ? fh : cv.height); gl.uniform2f(l.uE, W/U/2, H/U/2);
       gl.uniform4fv(l.uV, Vb); gl.uniform4fv(l.uS, Sb); gl.uniform3f(l.uMoon, mo[0], mo[1], .062);
       gl.uniform4f(l.uG, hz, wave, P(port ? .1 : .15, 0)[0], (port ? .56 : .66)*H/U);
-      gl.uniform4f(l.uG2, Math.max(.1, 56/U), P(port ? .7 : .64, 0)[0], 0, 0);
-      if (i === 2){ gl.uniform1i(l.uCol, 0); gl.uniform1i(l.uDir, 1); } });
+      gl.uniform4f(l.uG2, Math.max(.1, 56/U), P(port ? .7 : .64, 0)[0], 0, 0); gl.uniform2f(l.uZO, zo[0], zo[1]);
+      gl.uniform1i(l.uCol, 0); gl.uniform1i(l.uSky, 2); });
+    buildStrokes();
   }
-  init(); layout();
 
-  let t = 0, F = 0, last = 0, lastDraw = 0, acc = 0, nf = 0, t0 = performance.now();
+  let t = 0, F = 0, last = 0, lastDraw = 0, acc = 0, nf = 0, drops = 0, stillDone = false;
   const ptr = {x:0, y:0, tx:0, ty:0, s:0};
-  function draw(){
+  /* one frame: low-res colour/flow field -> sky base -> stroke quads -> stars & moon -> composite with the foreground.
+     cover < 1: the street covers everything below that fraction of the screen, so only the top part is painted */
+  function draw(zoom, cover){
     const g = Math.max(0, Math.sin(t*.21)*Math.sin(t*.13 + 1)), gust = g*g;
     const z = 1 - .015*Math.sin(t*.05), cx = Math.sin(t*.09)*.022 + ptr.x*.012, cy = Math.sin(t*.067 + 1.3)*.013 + ptr.y*.008;
-    each(l => { gl.uniform1f(l.uT, t); gl.uniform1f(l.uF, F); gl.uniform1f(l.uZ, z); gl.uniform2f(l.uCam, cx, cy); gl.uniform3f(l.uPtr, ptr.x, ptr.y, ptr.s); });
+    Object.keys(progs).forEach(k => { const l = progs[k].loc; gl.useProgram(progs[k].p);
+      gl.uniform1f(l.uT, t); gl.uniform1f(l.uF, F); gl.uniform1f(l.uZ, z); gl.uniform2f(l.uCam, cx, cy); gl.uniform3f(l.uPtr, ptr.x, ptr.y, ptr.s); gl.uniform1f(l.uZoom, zoom); });
+    gl.disable(gl.BLEND); gl.disable(gl.SCISSOR_TEST);
+    gl.bindBuffer(gl.ARRAY_BUFFER, tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.disableVertexAttribArray(1);
     gl.viewport(0, 0, fw, fh);
-    for (let i = 0; i < 2; i++){ gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[i].fb); gl.useProgram(progs[i].p); gl.drawArrays(gl.TRIANGLES, 0, 3); }
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, cv.width, cv.height); gl.useProgram(progs[2].p);
-    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, fbo[0].tex); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, fbo[1].tex);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[0].fb); gl.useProgram(progs.field.p); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[1].fb); gl.useProgram(progs.dir.p); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.viewport(0, 0, cv.width, cv.height);
+    if (cover < 1){ const h = Math.min(cv.height, Math.ceil(cv.height*cover)); gl.enable(gl.SCISSOR_TEST); gl.scissor(0, cv.height - h, cv.width, h); }
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, fbo[0].tex);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[2].fb); gl.useProgram(progs.base.p); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.useProgram(progs.stroke.p); const sl = progs.stroke.loc;
+    gl.bindBuffer(gl.ARRAY_BUFFER, sbuf); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 32, 0); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 32, 16);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibuf);
+    layers.forEach(L => { gl.uniform1f(sl.uCs, L.cs); gl.uniform1f(sl.uSpd, L.spd); gl.drawElements(gl.TRIANGLES, L.n*6, gl.UNSIGNED_SHORT, L.first*12); });
+    gl.disableVertexAttribArray(1);
+    gl.useProgram(progs.dot.p); const dl = progs.dot.loc;
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    for (let i = 0; i < 11; i++){ const o = i*4; gl.uniform4f(dl.uQ, Sb[o], Sb[o+1], Sb[o+2]*7, 0); gl.uniform4f(dl.uQ2, 0, i, Sb[o+3], Sb[o+2]); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); }
+    gl.uniform4f(dl.uQ, moon[0], moon[1], moon[2]*8, 0); gl.uniform4f(dl.uQ2, 1, 0, 0, moon[2]); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    if (ptr.s > .01){ gl.uniform4f(dl.uQ, ptr.x, ptr.y, .3, 0); gl.uniform4f(dl.uQ2, 2, 0, 0, 0); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); }
+    gl.disable(gl.BLEND);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, fbo[2].tex); gl.activeTexture(gl.TEXTURE0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.useProgram(progs.plain.p); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.useProgram(progs.comp.p); gl.enable(gl.SCISSOR_TEST);
+    fgRects(zoom, cx, cy, z, cover).forEach(r => { gl.scissor(r[0], r[1], r[2], r[3]); gl.drawArrays(gl.TRIANGLES, 0, 3); });
+    gl.disable(gl.SCISSOR_TEST);
     return gust;
   }
-  function frame(now){
-    if (lost) return;
-    requestAnimationFrame(frame);
-    if (now - lastDraw < 15) return;                    // cap at ~60fps on 120Hz screens
-    const raw = last ? now - last : 16.7, dt = Math.min(.1, raw/1000); last = lastDraw = now; t += dt;
-    if (now - t0 > 2500 && raw < 120){ acc += raw; if (++nf === 40){ if (acc/nf > 24 && q > .62){ q *= .85; layout(); } acc = nf = 0; } }
-    ptr.s *= Math.exp(-dt*1.3); const k = Math.min(1, dt*5); ptr.x += (ptr.tx - ptr.x)*k; ptr.y += (ptr.ty - ptr.y)*k;
-    const gust = draw(); F += dt*(.6 + .9*gust + ptr.s*1.2);
+  /* where (in canvas pixels, GL y-up) hills, village or cypress can appear this frame: a band up to the highest hill/spire,
+     plus the cypress column. Only there does the expensive foreground painter run. */
+  function fgRects(zoom, cx, cy, z, cover){
+    const Wc = cv.width, Hc = cv.height, M = Math.min(Wc, Hc), out = [];
+    const toPx = (qx, qy, k, f) => { const s = 1 + (zoom - 1)*k; return [(zo[0] + (qx - cx*f - zo[0])*s)/z*M + .5*Wc, (zo[1] + (qy - cy*f - zo[1])*s)/z*M + .5*Hc]; };
+    const top = Math.max(toPx(0, geo.hz + .16, .93, .55)[1], toPx(0, geo.hz + .1, 1, .8)[1]);
+    const low = cover < 1 ? Hc - Math.ceil(Hc*cover) : 0;
+    const add = (x0, y0, x1, y1) => { x0 = Math.max(0, Math.floor(x0)); x1 = Math.min(Wc, Math.ceil(x1)); y0 = Math.max(low, Math.floor(y0)); y1 = Math.min(Hc, Math.ceil(y1));
+      if (x1 > x0 && y1 > y0) out.push([x0, y0, x1 - x0, y1 - y0]); };
+    add(0, 0, Wc, top + 2);
+    const a = toPx(geo.cyx - geo.cyw*.9 - .03, -geo.ey - 1, 1.3, 1.2), b = toPx(geo.cyx + geo.cyw*.9 + .03, geo.cyh - geo.ey - .02, 1.3, 1.2);
+    if (b[1] > top) add(a[0], top, b[0], b[1] + 2);
+    return out;
   }
-  if (still){ t = 14; F = 9; draw(); }
-  else {
-    requestAnimationFrame(frame);
+  const sync = () => gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px1);
+
+  /* called by the finale's single animation loop every frame */
+  function frame(now, zoom, cover){
+    if (!ready || lost || !alive) return;
+    if (still){ if (!stillDone){ stillDone = true; t = 14; F = 9; draw(1, 1); } return; }
+    if (now - lastDraw < 12) return;                    // cap at ~60fps on 120Hz screens (60Hz frames are never skipped)
+    const raw = last ? now - last : 16.7, dt = Math.min(.1, raw/1000); last = lastDraw = now; t += dt;
+    if (raw < 120 && !document.hidden){ acc += raw; if (++nf === 60){ if (acc/nf > 26 && drops < 2 && scale > .5){ drops++; scale *= .85; layout(); } acc = nf = 0; } }   // emergency only: resolution is chosen up front
+    ptr.s *= Math.exp(-dt*1.3); const k = Math.min(1, dt*5); ptr.x += (ptr.tx - ptr.x)*k; ptr.y += (ptr.ty - ptr.y)*k;
+    const gust = draw(zoom || 1, cover == null ? 1 : cover); F += dt*(.6 + .9*gust + ptr.s*1.2);
+  }
+
+  /* ---- preparation, spread over several tasks so no single frame is long ---- */
+  const best = {};
+  const bench = z => () => { if (document.hidden) return false;      // a hidden page gets a throttled GPU: measure only while visible
+    const a = performance.now(); draw(z, 1); sync(); best[z] = Math.min(best[z] || 1e9, performance.now() - a); };   // one draw per task (no long task), tasks back to back so the GPU clock ramps up; best of 3
+  const steps = [
+    () => compileAll(),
+    () => doneQ(shaders, 'getShaderParameter'),
+    () => linkAll(),
+    () => doneQ(Object.keys(progs).map(k => progs[k].p), 'getProgramParameter'),
+    () => { finish(); layout(); },
+    () => { draw(1, 1); sync(); }, () => { draw(2.7, 1); sync(); },   // warm-up: the driver finishes its own work on the first real draw, while the canvas is still invisible
+    bench(1), bench(2.7), bench(1), bench(2.7), bench(1), bench(2.7),
+    () => { // pick the sharpest resolution that leaves room for 60fps on this GPU (target ~8ms for the sky)
+      const ms = Math.max(best[1], best[2.7]), cur = cv.width/W, want = cur*Math.sqrt(SKY_GPU_MS/Math.max(ms, 1));
+      const dpr = Math.min(window.devicePixelRatio || 1, 2), next = Math.max(.4, Math.min(dpr, want));
+      if (Math.abs(next - cur)/cur > .06){ scale = next; layout(); }
+      skyGLInfo.benchMs = Math.round(ms*10)/10; skyGLInfo.scale = Math.round(cv.width/W*100)/100; skyGLInfo.px = cv.width + 'x' + cv.height;
+      t = 0; F = 0; ready = true; }
+  ];
+  let si = 0;
+  (function run(){
+    if (!alive) return;
+    try {
+      if (gl.isContextLost()) throw new Error('context lost during setup');
+      const r = steps[si](); if (r === false){ setTimeout(run, 10); return; }
+      si++; if (si < steps.length) nextTask(run); else onReady(true);
+    } catch (e){ console.warn('starry night: WebGL failed, using 2D painter', e); alive = false; onReady(false); }
+  })();
+
+  if (!still){
     const mv = (e, s) => { ptr.tx = (e.clientX - W/2)/U; ptr.ty = (H/2 - e.clientY)/U; ptr.s = Math.max(ptr.s, s); };
     window.addEventListener('pointermove', e => mv(e, .55), {passive:true});
     window.addEventListener('pointerdown', e => { mv(e, 1); ptr.x = ptr.tx; ptr.y = ptr.ty; }, {passive:true});
   }
-  let rs; const onResize = () => { clearTimeout(rs); rs = setTimeout(() => { if (!lost){ layout(); if (still) draw(); } }, 200); };
+  let rs; const onResize = () => { clearTimeout(rs); rs = setTimeout(() => { if (alive && ready && !lost){ layout(); if (still){ stillDone = false; frame(performance.now(), 1, 1); } } }, 200); };
   window.addEventListener('resize', onResize); window.addEventListener('orientationchange', onResize);
-  cv.addEventListener('webglcontextlost', e => { e.preventDefault(); lost = true; });
-  cv.addEventListener('webglcontextrestored', () => { try { init(); lost = false; layout(); last = 0; if (still) draw(); else requestAnimationFrame(frame); } catch (err) { console.warn(err); } });
-  return true;
+  const api = { frame, onLost: null, destroy(){ alive = false; } };
+  cv.addEventListener('webglcontextlost', e => { e.preventDefault(); lost = true; clearTimeout(lostTimer);
+    lostTimer = setTimeout(() => { if (lost && alive && ready && api.onLost){ alive = false; api.onLost(); } }, 1500); });   // not back quickly: hand over to the 2D painter
+  cv.addEventListener('webglcontextrestored', () => { if (!alive) return;
+    try { compileAll(); linkAll(); finish(); layout(); lost = false; last = 0; stillDone = false; } catch (err){ console.warn(err); } });
+  return api;
 }
+const skyGLInfo = {};
+let SKY_GPU_MS = 8;           // GPU time per frame the sky may use; the render resolution is chosen to fit it
 
 function startSky2D(){
   const run = ++skyRun, paint = $('#sky'), fgc = $('#skyfg'), pc = paint.getContext('2d'), fc = fgc.getContext('2d');
@@ -675,12 +855,15 @@ function startSky2D(){
 /* ---------- the street: a painted night street with strings of flags (one letter each) ----------
    Shown after the camera zooms from the starry sky into the village. Brush-stroke buildings, cobbles,
    glowing windows and lanterns in the same palette as the sky, with the proposal on the flags. */
-let streetRun = 0;
-function startStreet(F){
+let streetRun = 0, STREET = null;
+/* Everything heavy (thousands of brush strokes, cobbles, the flag strings, every flag, the glow sprites) is painted
+   once, ahead of time, in small chunks. Each frame then only copies the finished street and stamps a few
+   pre-rendered sprites (window/lantern glows, the flags), so there are no gradients or paths built per frame. */
+function makeStreet(F){
   const run = ++streetRun, cv = $('#street'), ctx = cv.getContext('2d'), still = matchMedia('(prefers-reduced-motion: reduce)').matches, rnd = (a,b) => a + Math.random()*(b-a);
   const BLUES = ['#0a1a4f','#102a73','#16388a','#1c46a0','#244fb0','#2d5fc4','#0d2260'], WARM = ['#ffe27a','#ffd24a','#ffc14d','#fff0b0'];
   const FLAGS = [['#ff6b97','#fff'], ['#ffd166','#0b1646'], ['#f6efdc','#0b1646'], ['#5fb7ea','#0b1646'], ['#e8456f','#fff'], ['#ffb199','#0b1646']];
-  let W, H, m, dpr, bg, wins, lamps, rows, cw, cx0, cx1, yBase, t0 = performance.now(), revealAt = t0 + F.zoomStartMs + F.zoomMs + 500, last = 0, doneCalled = false, total = 0;
+  let W, H, m, dpr, bg, bc, wins, lamps, rows, cw, cx0, cx1, yBase, glowW, glowL, revealAt = Infinity, doneCalled = false, total = 0, skyY = 1, stillDrawn = false, built = false;
 
   function brush(c, x, y, len, w, ang, col, a){ c.strokeStyle = col; c.globalAlpha = a; c.lineWidth = w; c.lineCap = 'round'; c.beginPath(); c.moveTo(x,y);
     c.quadraticCurveTo(x + Math.cos(ang + .5)*len*.5, y + Math.sin(ang + .5)*len*.5, x + Math.cos(ang)*len, y + Math.sin(ang)*len); c.stroke(); c.globalAlpha = 1; }
@@ -709,47 +892,106 @@ function startStreet(F){
         c.globalAlpha = .9; c.fillStyle = BLUES[Math.random()*BLUES.length|0]; c.beginPath(); c.ellipse(x + cwid/2 + rnd(-2,2), y + h/2, cwid*.46, h*.5, 0, 0, 7); c.fill(); if (Math.random() < .12){ c.fillStyle = 'rgba(255,215,120,.35)'; c.fill(); } }
       y += h*1.04; r++; } c.globalAlpha = 1; }
   function lampPost(c, x){ c.fillStyle = '#050d2e'; c.fillRect(x - 3, yBase - m*.22, 6, m*.22); c.fillRect(x - m*.02, yBase - m*.255, m*.04, m*.035); lamps.push({x, y:yBase - m*.238, r:m*.2, p:rnd(0,6.28)}); }
-
-  function build(){
-    dpr = Math.min(window.devicePixelRatio || 1, 1.5); W = innerWidth; H = innerHeight; m = Math.min(W,H); cv.width = W*dpr; cv.height = H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
-    cw = Math.min(W*.76, 620); cx0 = (W - cw)/2; cx1 = cx0 + cw; yBase = H*.8; wins = []; lamps = [];
-    const off = document.createElement('canvas'); off.width = W*dpr; off.height = H*dpr; const c = off.getContext('2d'); c.setTransform(dpr,0,0,dpr,0,0);
-    distant(c); facade(c, -m*.1, cx0 + cw*.03, H*.1, yBase); facade(c, cx1 - cw*.03, W + m*.1, H*.06, yBase); road(c); lampPost(c, cx0 + cw*.1); lampPost(c, cx1 - cw*.1);
-    bg = off;
+  function strings(c){ rows.forEach(r => { const xa = cx0 + 2, xb = cx1 - 2;            // the flag strings never move, so they are part of the painted street
+    c.strokeStyle = '#07102e'; c.lineWidth = 2; c.beginPath(); for (let k = 0; k <= 30; k++){ const u = k/30, x = xa + (xb - xa)*u, y = r.y + 4*r.sag*u*(1 - u); k ? c.lineTo(x,y) : c.moveTo(x,y); } c.stroke(); }); }
+  function layoutFlags(){
     const lines = F.lines.map(s => s.toUpperCase()), nl = lines.length, maxN = Math.max(...lines.map(s => s.length));
     const top = H*.17, bot = H*.66, gap = nl > 1 ? (bot - top)/(nl - 1) : H, fw = Math.min(cw/(maxN + 1.6), m*.09, 54, (gap - H*.03)/1.32); rows = [];
     lines.forEach((s, i) => { const y = nl === 1 ? (top + bot)/2 : top + (bot - top)*i/(nl - 1), items = [];
       [...s].forEach((ch, k) => { if (ch !== ' ') items.push({ch, u:.5 + (k - (s.length - 1)/2)*(fw*1.1)/cw, col:FLAGS[(i*3 + k) % FLAGS.length], p:rnd(0,6.28)}); });
       rows.push({y, fw, items, sag:H*.04}); });
     total = 0; rows.forEach(r => r.items.forEach(it => { it.at = total*F.letterMs; total++; })); }
+  function shade(hex){ const n = parseInt(hex.slice(1), 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255, k = .78; return 'rgb(' + (r*k|0) + ',' + (g*k|0) + ',' + (b*k|0) + ')'; }
+  function flagSprite(it, fw){            // each flag is painted once (same drawing as before) at a resolution that stays sharp through the pop-in overshoot
+    const fh = fw*1.28, pad = Math.ceil(fw*.12) + 2, k = dpr*1.35, w = fw + pad*2, h = fh + pad*2;
+    const c = document.createElement('canvas'); c.width = Math.ceil(w*k); c.height = Math.ceil(h*k); const x = c.getContext('2d');
+    x.setTransform(k, 0, 0, k, (pad + fw/2)*k, pad*k);
+    x.beginPath(); x.moveTo(-fw/2, 0); x.lineTo(fw/2, 0); x.lineTo(0, fh); x.closePath();
+    const g = x.createLinearGradient(0,0,0,fh); g.addColorStop(0, it.col[0]); g.addColorStop(1, shade(it.col[0])); x.fillStyle = g; x.fill();
+    x.save(); x.clip(); x.lineCap = 'round'; for (let j = 0; j < 5; j++){ x.strokeStyle = 'rgba(255,255,255,.22)'; x.lineWidth = fw*.07; x.beginPath(); x.moveTo(-fw*.4 + j*fw*.2, fh*.05); x.lineTo(-fw*.3 + j*fw*.15, fh*.7); x.stroke(); } x.restore();
+    x.lineWidth = Math.max(1.4, fw*.045); x.strokeStyle = '#08102f'; x.lineJoin = 'round'; x.stroke();
+    x.fillStyle = it.col[1]; x.font = '700 ' + (fw*.56) + 'px Georgia,"Times New Roman",serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(it.ch, 0, fh*.3);
+    it.spr = c; it.ox = pad + fw/2; it.oy = pad; it.sw = c.width/k; it.sh = c.height/k; }
+  function glowSprite(col){ const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'), g = x.createRadialGradient(64,64,0,64,64,64);
+    g.addColorStop(0, 'rgba(' + col + ',1)'); g.addColorStop(1, 'rgba(' + col + ',0)'); x.fillStyle = g; x.fillRect(0,0,128,128); return c; }
+  function coverDepth(){                  // how far down the street still lets the sky show through (the sky need not be painted below that)
+    const sw = 48, sh = 96, s = document.createElement('canvas'); s.width = sw; s.height = sh; const x = s.getContext('2d', {willReadFrequently:true});
+    x.drawImage(bg, 0, 0, sw, sh); const d = x.getImageData(0, 0, sw, sh).data; let maxY = 0;
+    for (let y = 0; y < sh; y++) for (let i = 0; i < sw; i++) if (d[(y*sw + i)*4 + 3] < 252){ maxY = y + 1; break; }
+    return Math.min(1, (maxY + 2)/sh); }
+
+  const steps = () => [
+    () => { dpr = Math.min(window.devicePixelRatio || 1, 1.5); W = innerWidth; H = innerHeight; m = Math.min(W,H);
+      cw = Math.min(W*.76, 620); cx0 = (W - cw)/2; cx1 = cx0 + cw; yBase = H*.8; wins = []; lamps = [];
+      bg = document.createElement('canvas'); bg.width = Math.round(W*dpr); bg.height = Math.round(H*dpr); bc = bg.getContext('2d'); bc.setTransform(dpr,0,0,dpr,0,0);
+      layoutFlags(); distant(bc); },
+    () => facade(bc, -m*.1, cx0 + cw*.03, H*.1, yBase),
+    () => facade(bc, cx1 - cw*.03, W + m*.1, H*.06, yBase),
+    () => { road(bc); lampPost(bc, cx0 + cw*.1); lampPost(bc, cx1 - cw*.1); strings(bc); },
+    () => { glowW = glowW || glowSprite('255,205,90'); glowL = glowL || glowSprite('255,196,92'); rows.forEach(r => r.items.forEach(it => flagSprite(it, r.fw))); },
+    () => { skyY = coverDepth(); cv.width = bg.width; cv.height = bg.height; built = true; stillDrawn = false; }
+  ];
 
   function flag(it, x, y, fw, now){
-    const age = now - revealAt - it.at; if (age < 0) return; const p = Math.min(1, age/520), s = p < 1 ? 1 + 2.2*Math.pow(p - 1, 3) + 1.2*Math.pow(p - 1, 2) : 1;   // pop in with a little overshoot
-    const sway = Math.sin(now/700 + it.p)*.09, fh = fw*1.28;
-    ctx.save(); ctx.translate(x, y - (1 - Math.min(1,p*1.6))*fw*1.2); ctx.rotate(sway); ctx.scale(s, s);
-    ctx.beginPath(); ctx.moveTo(-fw/2, 0); ctx.lineTo(fw/2, 0); ctx.lineTo(0, fh); ctx.closePath();
-    const g = ctx.createLinearGradient(0,0,0,fh); g.addColorStop(0, it.col[0]); g.addColorStop(1, shade(it.col[0])); ctx.fillStyle = g; ctx.fill();
-    ctx.save(); ctx.clip(); ctx.lineCap = 'round'; for (let k = 0; k < 5; k++){ ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = fw*.07; ctx.beginPath(); ctx.moveTo(-fw*.4 + k*fw*.2, fh*.05); ctx.lineTo(-fw*.3 + k*fw*.15, fh*.7); ctx.stroke(); } ctx.restore();
-    ctx.lineWidth = Math.max(1.4, fw*.045); ctx.strokeStyle = '#08102f'; ctx.lineJoin = 'round'; ctx.stroke();
-    ctx.fillStyle = it.col[1]; ctx.font = '700 ' + (fw*.56) + 'px Georgia,"Times New Roman",serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(it.ch, 0, fh*.3);
-    ctx.restore(); }
-  function shade(hex){ const n = parseInt(hex.slice(1), 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255, k = .78; return 'rgb(' + (r*k|0) + ',' + (g*k|0) + ',' + (b*k|0) + ')'; }
-  function glow(x, y, r, a, col){ const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, 'rgba(' + col + ',' + a + ')'); g.addColorStop(1, 'rgba(' + col + ',0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); }
-
+    const age = still ? 1e9 : now - revealAt - it.at; if (age < 0) return;
+    const p = Math.min(1, age/520), s = p < 1 ? 1 + 2.2*Math.pow(p - 1, 3) + 1.2*Math.pow(p - 1, 2) : 1;   // pop in with a little overshoot
+    const sway = still ? 0 : Math.sin(now/700 + it.p)*.09, c = Math.cos(sway)*s*dpr, sn = Math.sin(sway)*s*dpr;
+    ctx.setTransform(c, sn, -sn, c, x*dpr, (y - (1 - Math.min(1,p*1.6))*fw*1.2)*dpr); ctx.drawImage(it.spr, -it.ox, -it.oy, it.sw, it.sh); }
   function frame(now){
-    if (run !== streetRun) return;
-    ctx.clearRect(0,0,W,H); ctx.drawImage(bg, 0, 0, W, H);
-    wins.forEach(w => glow(w.x, w.y, w.r, .22 + .12*Math.sin(now/900 + w.p), '255,205,90'));
-    lamps.forEach(l => { const f = .55 + .15*Math.sin(now/400 + l.p) + .06*Math.sin(now/130 + l.p*2); glow(l.x, l.y, l.r, f*.75, '255,196,92'); ctx.fillStyle = '#fff1b8'; ctx.beginPath(); ctx.arc(l.x, l.y, m*.012, 0, 7); ctx.fill(); });
-    rows.forEach(r => { const xa = cx0 + 2, xb = cx1 - 2;
-      ctx.strokeStyle = '#07102e'; ctx.lineWidth = 2; ctx.beginPath(); for (let k = 0; k <= 30; k++){ const u = k/30, x = xa + (xb - xa)*u, y = r.y + 4*r.sag*u*(1 - u); k ? ctx.lineTo(x,y) : ctx.moveTo(x,y); } ctx.stroke();
-      r.items.forEach(it => { const x = xa + (xb - xa)*it.u, y = r.y + 4*r.sag*it.u*(1 - it.u); flag(it, x, y, r.fw, now); }); });
+    if (run !== streetRun || !built) return;
+    if (still){ if (stillDrawn) return; stillDrawn = true; }
+    ctx.setTransform(1,0,0,1,0,0); ctx.globalCompositeOperation = 'copy'; ctx.drawImage(bg, 0, 0); ctx.globalCompositeOperation = 'source-over';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    for (const w of wins){ ctx.globalAlpha = still ? .28 : .22 + .12*Math.sin(now/900 + w.p); ctx.drawImage(glowW, w.x - w.r, w.y - w.r, w.r*2, w.r*2); }
+    for (const l of lamps){ const f = still ? .6 : .55 + .15*Math.sin(now/400 + l.p) + .06*Math.sin(now/130 + l.p*2); ctx.globalAlpha = f*.75; ctx.drawImage(glowL, l.x - l.r, l.y - l.r, l.r*2, l.r*2); }
+    ctx.globalAlpha = 1; ctx.fillStyle = '#fff1b8'; ctx.beginPath(); for (const l of lamps){ ctx.moveTo(l.x + m*.012, l.y); ctx.arc(l.x, l.y, m*.012, 0, 7); } ctx.fill();
+    for (const r of rows){ const xa = cx0 + 2, xb = cx1 - 2; for (const it of r.items) flag(it, xa + (xb - xa)*it.u, r.y + 4*r.sag*it.u*(1 - it.u), r.fw, now); }
+    ctx.setTransform(1,0,0,1,0,0);
     if (!doneCalled && now > revealAt + total*F.letterMs + 600){ doneCalled = true; F.onRevealed && F.onRevealed(); }
-    if (!still) requestAnimationFrame(frame);
   }
-  build(); requestAnimationFrame(frame);
-  F.revealAt = () => revealAt;
-  let rs; window.addEventListener('resize', () => { clearTimeout(rs); rs = setTimeout(() => { if (run === streetRun){ build(); if (still) frame(performance.now()); } }, 250); });
+  let rs; window.addEventListener('resize', () => { clearTimeout(rs); rs = setTimeout(() => { if (run === streetRun){ built = false; steps().forEach(f => f()); frame(performance.now()); } }, 250); });
+  return { steps, frame, cover: () => skyY, begin(t0){ revealAt = t0 + F.zoomStartMs + F.zoomMs + 500; F.revealAt = () => revealAt; } };
+}
+function prepareStreet(F){
+  if (prepareStreet.p) return prepareStreet.p;
+  STREET = makeStreet(F); const st = STREET.steps(); let i = 0;
+  return prepareStreet.p = new Promise(res => (function next(){ if (i < st.length){ st[i++](); nextTask(next); } else res(); })());
+}
+
+/* ---------- the finale: prepared ahead of time, then played by ONE animation loop ---------- */
+function prepareFinale(){
+  if (prepareFinale.p) return prepareFinale.p;
+  const F = CONFIG.finale, dpr = window.devicePixelRatio || 1;
+  const hearts = new Promise(res => { let i = 0; (function next(){ if (i < F.hearts.length){ const h = F.hearts[i++]; SIZES.forEach(s => sprite(h, s, dpr)); nextTask(next); } else res(); })(); });
+  return prepareFinale.p = prepareSky().then(ok => prepareStreet(F).then(() => hearts).then(() => ok));
+}
+function cubicBezier(x1, y1, x2, y2){       // the same curve the old CSS transition used
+  const B = (a, b, t) => 3*a*t*(1 - t)*(1 - t) + 3*b*t*t*(1 - t) + t*t*t;
+  return x => { if (x <= 0) return 0; if (x >= 1) return 1; let lo = 0, hi = 1, t = x; for (let i = 0; i < 22; i++){ t = (lo + hi)/2; if (B(x1, x2, t) < x) lo = t; else hi = t; } return B(y1, y2, t); };
+}
+function playFinale(F, glOK){
+  const t0 = performance.now(), ZOOM = 2.7, ease = cubicBezier(.5,.02,.2,1), still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const st = STREET || {begin(){}, frame(){}, cover: () => 1}, scv = $('#street'), clamp = v => v < 0 ? 0 : v > 1 ? 1 : v;
+  let zoom2D = false, rained = false, op = -1, sc = -1;
+  const go2D = () => { skyTo2D(); document.querySelectorAll('.czoom').forEach(e => e.style.transitionDuration = '1.2s,' + F.zoomMs/1000 + 's'); };
+  if (!glOK) go2D();
+  else if (SKYGL) SKYGL.onLost = () => { SKYGL = null; go2D(); zoom2D = false; };
+  document.body.classList.add('skyon');              // 1. the starry night fades in
+  st.begin(t0);
+  (function loop(now){
+    const e = now - t0;
+    // 2. the camera moves in toward the village: eased, time-based, rendered inside the shader so every frame is sharp
+    const zp = still ? 0 : clamp((e - F.zoomStartMs)/F.zoomMs), zoom = Math.pow(ZOOM, ease(zp));
+    // 3. the street dissolves in while the camera is still moving, and keeps gliding forward a little until it settles
+    const d = clamp((e - F.zoomStartMs - .55*F.zoomMs)/(.45*F.zoomMs + 200)), o = d*d*(3 - 2*d), s = still ? 1 : 1 - .07*Math.pow(1 - d, 3);
+    if (o !== op){ scv.style.opacity = o.toFixed(4); op = o; }
+    if (s !== sc){ scv.style.transform = s < 1 ? 'scale(' + s.toFixed(4) + ')' : 'none'; sc = s; }
+    if (SKYGL) SKYGL.frame(now, zoom, o >= 1 && s >= 1 ? st.cover() : 1);
+    else if (!zoom2D && !still && e >= F.zoomStartMs){ zoom2D = true; document.body.classList.add('zoom'); }
+    if (o > 0) st.frame(now);
+    if (!rained && e >= F.zoomStartMs + F.zoomMs + 400){ rained = true; rain(F.hearts, {loop:true, count:24}); }   // 4. hearts start falling as the flags pop in
+    requestAnimationFrame(loop);
+  })(t0);
 }
 
 function buildKb(box, onKey){
@@ -776,7 +1018,7 @@ const INIT = {
     const box = $('#nameTiles'), tr = el('div','trow'); box.style.setProperty('--n', 5); box.style.setProperty('--rows', 1);
     [...(CONFIG.herName || 'HELLO').toUpperCase().slice(0,7)].forEach((ch,i) => { const t = el('div','tile correct', ch); tr.append(t); });
     box.append(tr);
-    $('#startBtn').onclick = () => { loadSongs(); show('wordle'); };
+    $('#startBtn').onclick = () => { loadSongs(); show('wordle'); setTimeout(prepareFinale, 400); };   // get the finale ready in the background while she plays
   },
 
   /* ---------------- WORDLE ---------------- */
@@ -818,12 +1060,11 @@ const INIT = {
   /* ---------------- THE QUESTION ---------------- */
   finale(){
     const F = CONFIG.finale;
-    document.body.classList.add('night'); startSky();                                        // 1. the starry night appears
-    F.onRevealed = () => rain(F.hearts, {loop:true, count:60});                              //    a bigger heart shower once the banner is complete
-    startStreet(F);                                                                          //    the street is built now and stays hidden until the zoom
-    setTimeout(() => document.body.classList.add('zoom'), F.zoomStartMs);                    // 2. the camera moves in toward the village
-    setTimeout(() => $('#street').classList.add('on'), F.zoomStartMs + F.zoomMs*.55);        // 3. and arrives in the street
-    setTimeout(() => rain(F.hearts, {loop:true, count:24}), F.zoomStartMs + F.zoomMs + 400); // 4. hearts start falling as the banner flags pop in
+    document.body.classList.add('night');
+    F.onRevealed = () => rain(F.hearts, {loop:true, count:60});       // a bigger heart shower once the banner is complete
+    F.hearts.forEach(h => SIZES.forEach(s => sprite(h, s, window.devicePixelRatio || 1)));   // already cached if prepared at Play; else done now, before anything moves
+    // normally everything was prepared while she played; if not (e.g. ?stage=finale) it is prepared now, then played
+    prepareFinale().then(ok => playFinale(F, ok), err => { console.warn(err); playFinale(F, false); });
   }
 };
 
