@@ -868,7 +868,7 @@ function makeStreet(F){
   function brush(c, x, y, len, w, ang, col, a){ c.strokeStyle = col; c.globalAlpha = a; c.lineWidth = w; c.lineCap = 'round'; c.beginPath(); c.moveTo(x,y);
     c.quadraticCurveTo(x + Math.cos(ang + .5)*len*.5, y + Math.sin(ang + .5)*len*.5, x + Math.cos(ang)*len, y + Math.sin(ang)*len); c.stroke(); c.globalAlpha = 1; }
   function facade(c, x0, x1, yTop, yBot){
-    const seg = m*.17, tops = []; for (let x = x0; x < x1; x += seg) tops.push([x, yTop + rnd(0, m*.2)]);
+    const seg = m*.17, tops = []; for (let x = x0; x < x1; x += seg) tops.push([x, yTop + rnd(0, m*.08)]);
     c.save(); c.beginPath(); c.moveTo(x0, yBot); tops.forEach(([x,y]) => { c.lineTo(x, y); c.lineTo(Math.min(x1, x + seg), y); }); c.lineTo(x1, yBot); c.closePath();
     const g = c.createLinearGradient(x0,0,x1,0); g.addColorStop(0,'#091748'); g.addColorStop(1,'#15338f'); c.fillStyle = g; c.fill(); c.clip();
     const n = (x1 - x0)*(yBot - yTop)/140; for (let i = 0; i < n; i++) brush(c, rnd(x0,x1), rnd(yTop,yBot), rnd(m*.025,m*.07), rnd(m*.007,m*.016), -1.57 + rnd(-.45,.45), BLUES[Math.random()*BLUES.length|0], rnd(.3,.8));
@@ -925,8 +925,8 @@ function makeStreet(F){
       cw = Math.min(W*.76, 620); cx0 = (W - cw)/2; cx1 = cx0 + cw; yBase = H*.8; wins = []; lamps = [];
       bg = document.createElement('canvas'); bg.width = Math.round(W*dpr); bg.height = Math.round(H*dpr); bc = bg.getContext('2d'); bc.setTransform(dpr,0,0,dpr,0,0);
       layoutFlags(); distant(bc); },
-    () => facade(bc, -m*.1, cx0 + cw*.03, H*.1, yBase),
-    () => facade(bc, cx1 - cw*.03, W + m*.1, H*.06, yBase),
+    () => facade(bc, -m*.1, cx0 + cw*.03, rows[0].y - m*.17, yBase),      // rooflines rise above the top string of flags
+    () => facade(bc, cx1 - cw*.03, W + m*.1, rows[0].y - m*.21, yBase),
     () => { road(bc); lampPost(bc, cx0 + cw*.1); lampPost(bc, cx1 - cw*.1); strings(bc); },
     () => { glowW = glowW || glowSprite('255,205,90'); glowL = glowL || glowSprite('255,196,92'); rows.forEach(r => r.items.forEach(it => flagSprite(it, r.fw))); },
     () => { skyY = coverDepth(); cv.width = bg.width; cv.height = bg.height; built = true; stillDrawn = false; }
