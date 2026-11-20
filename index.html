@@ -181,7 +181,7 @@ function dogMoment(){           // solved: the dog pops up with a song, and Cont
   setTimeout(() => {
     $('#dogCap').textContent = CONFIG.dog.caption; $('#dogSub').textContent = CONFIG.dog.sub;
     $('#dog').classList.add('on'); rain(CONFIG.rainEmoji || '🫦');
-    $('#dogBtn').onclick = () => { $('#dog').classList.remove('on'); rain.stop && rain.stop(); playSong('proposal'); show('finale'); };
+    $('#dogBtn').onclick = () => { $('#dog').classList.remove('on'); rain.stop && rain.stop(); stopSong(); show('finale'); };
   }, 700);
 }
 function flash(id, text, ms=1800){ const m = $(id); m.textContent = text; clearTimeout(m._t); if (ms) m._t = setTimeout(() => m.textContent = '', ms); }
@@ -249,6 +249,10 @@ function loadSongs(){
     });
   };
   const sc = document.createElement('script'); sc.src = 'https://www.youtube.com/iframe_api'; document.head.append(sc);
+}
+function stopSong(){   // silence between the dog and the zoom; the tap also 'unlocks' the proposal player so it may start on its own at the zoom
+  const d = curPlayer(); if (d && d.ready) d.p.pauseVideo(); music.want = false;
+  const n = music.pl.proposal; if (n && n.ready){ try{ n.p.mute(); n.p.playVideo(); setTimeout(() => { if (!music.want){ n.p.pauseVideo(); n.p.unMute(); } }, 120); }catch(e){} }
 }
 function playSong(key){
   loadSongs(); const prev = curPlayer(); if (prev && prev.ready && music.cur !== key) prev.p.pauseVideo();
@@ -975,7 +979,7 @@ function cubicBezier(x1, y1, x2, y2){       // the same curve the old CSS transi
 function playFinale(F, glOK){
   const t0 = performance.now(), ZOOM = 2.7, ease = cubicBezier(.5,.02,.2,1), still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const st = STREET || {begin(){}, frame(){}, cover: () => 1}, scv = $('#street'), clamp = v => v < 0 ? 0 : v > 1 ? 1 : v;
-  let zoom2D = false, rained = false, op = -1, sc = -1;
+  let sung = false, zoom2D = false, rained = false, op = -1, sc = -1;
   const go2D = () => { skyTo2D(); document.querySelectorAll('.czoom').forEach(e => e.style.transitionDuration = '1.2s,' + F.zoomMs/1000 + 's'); };
   if (!glOK) go2D();
   else if (SKYGL) SKYGL.onLost = () => { SKYGL = null; go2D(); zoom2D = false; };
@@ -992,6 +996,7 @@ function playFinale(F, glOK){
     if (SKYGL) SKYGL.frame(now, zoom, o >= 1 && s >= 1 ? st.cover() : 1);
     else if (!zoom2D && !still && e >= F.zoomStartMs){ zoom2D = true; document.body.classList.add('zoom'); }
     if (o > 0) st.frame(now);
+    if (!sung && e >= F.zoomStartMs){ sung = true; playSong('proposal'); const pp = music.pl.proposal; if (pp && pp.ready) pp.p.unMute(); }   // the song begins as the camera starts to move
     if (!rained && e >= F.zoomStartMs + F.zoomMs + 400){ rained = true; rain(F.hearts, {loop:true, count:24}); }   // 4. hearts start falling as the flags pop in
     requestAnimationFrame(loop);
   })(t0);
