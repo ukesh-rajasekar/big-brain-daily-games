@@ -42,6 +42,7 @@ const CONFIG = {
 
   /* ---------- shell ---------- */
   header{position:sticky;top:0;z-index:20;height:var(--hdr);background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 var(--pad);flex:none;transition:background .8s,border-color .8s}
+  #musicBtn{display:none!important}
   header h1{font:700 clamp(18px,5vw,24px) Georgia,"Times New Roman",serif;margin:0;letter-spacing:.3px;transition:opacity 1s}
   main{position:relative;z-index:2;width:100%;max-width:1000px;margin:0 auto;flex:1;padding:var(--pad);padding-bottom:max(var(--pad),env(safe-area-inset-bottom));display:flex;flex-direction:column}
   .screen{display:none;width:100%;flex:1;flex-direction:column;align-items:center;gap:14px}
@@ -254,10 +255,15 @@ function stopSong(){   // silence between the dog and the zoom; the tap also 'un
   const d = curPlayer(); if (d && d.ready) d.p.pauseVideo(); music.want = false;
   const n = music.pl.proposal; if (n && n.ready){ try{ n.p.mute(); n.p.playVideo(); setTimeout(() => { if (!music.want){ n.p.pauseVideo(); n.p.unMute(); } }, 120); }catch(e){} }
 }
+function primeDog(){   // while she plays, the dog song is already running silently (started from her own taps), so it can be un-muted the instant she wins
+  const d = music.pl.dog; if (!d || !d.ready || music.primed || music.cur) return; music.primed = true;
+  try{ d.p.mute(); d.p.seekTo(CONFIG.music.dog.start || 0, true); d.p.playVideo(); }catch(e){}
+}
+['pointerdown','keydown'].forEach(ev => document.addEventListener(ev, primeDog, true));
 function playSong(key){
   loadSongs(); const prev = curPlayer(); if (prev && prev.ready && music.cur !== key) prev.p.pauseVideo();
   music.cur = key; music.want = true; musicLabel();
-  const st = music.pl[key]; if (st && st.ready){ st.p.seekTo(CONFIG.music[key].start || 0, true); st.p.playVideo(); }
+  const st = music.pl[key]; if (st && st.ready){ st.p.unMute(); st.p.seekTo(CONFIG.music[key].start || 0, true); st.p.playVideo(); }
 }
 $('#musicBtn').onclick = () => { const st = curPlayer(); if (!st || !st.ready) return; if (st.on){ music.want = false; st.p.pauseVideo(); } else { music.want = true; st.p.playVideo(); } };
 // some phones only allow sound from a direct tap, so any tap nudges it to play
